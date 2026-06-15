@@ -6,18 +6,19 @@
 
 ## What Changes
 
-- 定义 append-only event log 的最小行为边界：只追加、不擦旧、支持幂等去重、支持从日志重放恢复投影。
+- 定义 append-only event log 的最小行为边界：只追加、不擦旧、支持幂等去重、支持批次边界、支持从日志重放恢复已接受投影。
 - 定义 `story_state.json` 的角色：当前状态投影，而非单一真相源。
-- 定义 MVP 所需的最小故事状态对象：`Character`、`PlotEvent`、`Fact`、`ContinuityEvent`、`UserPreference`，并补充账本层 `SystemEvent`。
+- 定义 MVP 所需的最小故事状态对象：`Character`、`PlotEvent`、`Fact`、`ContinuityEvent`、`project_preferences`，并补充账本层 `SystemEvent`。
+- 明确双真相源边界：剧本文档是用户正文真相源，event log 是 AI 结构化状态与判断偏好的真相源。
 - 定义故事时间字段的责任边界：数据模型必须能表达绝对/相对/未知时间，提取 Agent 负责从自然语言解析到该结构。
-- 定义矛盾证据引用规则：`ContinuityEvent.evidence` 指向 `Fact`，`Fact` 可追溯到来源 `SystemEvent`。
+- 定义矛盾证据引用规则：`ContinuityEvent.evidence_fact_ids` 指向 `Fact`，`Fact` 可追溯到来源 `SystemEvent` 与原文锚点。
 - 明确本变更不实现 UI、不接真实 LLM、不接 LightRAG、不选择完整技术栈、不实现完整多 Agent 编排。
 
 ## Capabilities
 
 ### New Capabilities
-- `event-log`: append-only 系统事件日志、幂等键、版本锚点、投影重放与恢复规则。
-- `minimal-story-state`: MVP 故事状态投影对象、事实引用、故事时间表达、矛盾证据与用户偏好降权的最小结构。
+- `event-log`: append-only 系统事件日志、幂等键、批次边界、版本锚点、投影重放与恢复规则。
+- `minimal-story-state`: MVP 故事状态投影对象、事实引用、故事时间表达、矛盾证据、项目偏好降权与显式确认的最小结构。
 
 ### Modified Capabilities
 
