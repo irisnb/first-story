@@ -6,9 +6,8 @@ from ..models import (
     AppendEventRequest,
     EventListResponse,
     EventResponse,
-    SystemEvent,
 )
-from ..services import EventLogService, ProjectService
+from ..services import ProjectService
 
 router = APIRouter(prefix="/projects/{project_id}/events")
 
@@ -57,7 +56,7 @@ async def append_event(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project '{project_id}' not found",
         )
-    event_log, _ = services
+    event_log, projector = services
 
     seq, was_new = event_log.append_event(
         event_id=request.event_id,
@@ -70,25 +69,12 @@ async def append_event(
         schema_version=request.schema_version,
     )
 
-    # Update project timestamp
-    project_service._update_project_timestamp(project_id)
+    if was_new:
+        # Keep the state projection in sync with the log so reads always
+        # reflect freshly appended events (no manual /state/rebuild needed).
+        projector.rebuild()
+        project_service._update_project_timestamp(project_id)
 
-    # If duplicate, return existing event
-    if not was_new:
-        # Find and return the existing event
-        for event in event_log.read_events(from_seq=seq, to_seq=seq):
-            return EventResponse(**event.model_dump())
-
-    # Return the new event
-    return EventResponse(
-        event_id=request.event_id,
-        idempotency_key=request.idempotency_key,
-        seq=seq,
-        type=request.type,
-        schema_version=request.schema_version,
-        payload=request.payload,
-        base_state_version=request.base_state_version,
-        actor=request.actor,
-        batch_id=request.batch_id,
-        timestamp=event_log.read_events(from_seq=seq, to_seq=seq).__next__().timestamp if was_new else None,
-    )
+    # Return the persisted event for this seq (covers both new and duplicate).
+    stored_event = next(event_log.read_events(from_seq=seq, to_seq=seq))
+    return EventResponse(**stored_event.model_dump())

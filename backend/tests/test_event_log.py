@@ -115,3 +115,50 @@ class TestEventLogService:
         # Get events by batch
         events = event_log_service.get_events_by_batch(batch_id)
         assert len(events) == 3
+
+
+class TestReplayFailFast:
+    """Tests for replay fail-fast behavior (P0 security fix)."""
+
+    def test_malformed_jsonl_raises_error(self, event_log_service):
+        """Test that malformed JSONL raises an error instead of silently skipping."""
+        # Write malformed JSON directly to the log file
+        log_file = event_log_service.log_file
+        with open(log_file, "w", encoding="utf-8") as f:
+            f.write('{"seq": 1, "type": "character.created", "payload": {}}\n')
+            f.write("THIS IS NOT VALID JSON\n")  # Malformed line
+            f.write('{"seq": 2, "type": "fact.created", "payload": {}}\n')
+
+        # Reading events should raise an error, not silently skip the bad line
+        with pytest.raises(Exception):
+            list(event_log_service.read_events())
+
+    def test_unknown_event_type_raises_error(self, event_log_service):
+        """Test that unknown event types raise an error during replay."""
+        # Write event with unknown type directly to the log file
+        log_file = event_log_service.log_file
+        with open(log_file, "w", encoding="utf-8") as f:
+            f.write(
+                '{"event_id": "evt_001", "idempotency_key": "key_1", "seq": 1, '
+                '"timestamp": "2026-01-01T00:00:00", "type": "unknown.event_type", '
+                '"schema_version": "1.0", "payload": {}, "base_state_version": 0, "actor": "user"}\n'
+            )
+
+        # Reading events should raise an error for unknown event type
+        with pytest.raises(Exception):
+            list(event_log_service.read_events())
+
+    def test_missing_required_field_raises_error(self, event_log_service):
+        """Test that missing required fields raise an error during replay."""
+        # Write event missing required 'seq' field
+        log_file = event_log_service.log_file
+        with open(log_file, "w", encoding="utf-8") as f:
+            f.write(
+                '{"event_id": "evt_001", "idempotency_key": "key_1", '
+                '"timestamp": "2026-01-01T00:00:00", "type": "character.created", '
+                '"schema_version": "1.0", "payload": {}, "base_state_version": 0, "actor": "user"}\n'
+            )
+
+        # Reading events should raise an error for missing required field
+        with pytest.raises(Exception):
+            list(event_log_service.read_events())

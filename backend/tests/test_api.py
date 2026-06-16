@@ -157,6 +157,120 @@ class TestEventsEndpoint:
         assert response.json()["seq"] == 1
 
 
+class TestProjectIdValidation:
+    """Tests for project_id validation (P0 security fix)."""
+
+    def test_project_id_path_traversal_attack(self, client):
+        """Test that path traversal attacks are rejected."""
+        # Attempt to access /etc/passwd via path traversal
+        response = client.get("/api/v1/projects/../../../etc/passwd/events")
+        assert response.status_code in [400, 404]
+
+    def test_project_id_invalid_format(self, client):
+        """Test that invalid project_id formats are rejected."""
+        # Invalid format (not proj_<timestamp>_<random>)
+        response = client.get("/api/v1/projects/invalid_id/events")
+        assert response.status_code in [400, 404]
+
+    def test_project_id_with_special_chars(self, client):
+        """Test that project_id with special characters is rejected."""
+        # Special characters that could be used for injection
+        response = client.get("/api/v1/projects/proj_123_abc%00/events")
+        assert response.status_code in [400, 404]
+
+
+class TestCORSConfiguration:
+    """Tests for CORS configuration (P0 security fix)."""
+
+    def test_cors_not_wildcard(self, client):
+        """Test that CORS is not using wildcard origin."""
+        response = client.options(
+            "/api/v1/projects",
+            headers={"Origin": "http://evil.com"},
+        )
+        # Should not have Access-Control-Allow-Origin: *
+        allow_origin = response.headers.get("access-control-allow-origin")
+        # If CORS is properly configured, it should either:
+        # 1. Not allow evil.com (no header or different value)
+        # 2. Be restricted to localhost
+        if allow_origin:
+            assert allow_origin != "*"
+            assert "localhost" in allow_origin or allow_origin == "http://localhost:3000"
+
+
+class TestPayloadValidation:
+    """Tests for request payload validation (P0 security fix)."""
+
+    def test_unknown_event_type_rejected(self, client):
+        """Test that unknown event types return 422."""
+        # Create project first
+        create_response = client.post(
+            "/api/v1/projects",
+            json={"name": "Test Story"},
+        )
+        project_id = create_response.json()["id"]
+
+        # Try to append event with unknown type
+        response = client.post(
+            f"/api/v1/projects/{project_id}/events",
+            json={
+                "event_id": "evt_001",
+                "idempotency_key": "test_key",
+                "type": "unknown.event_type",  # Invalid type
+                "payload": {"foo": "bar"},
+            },
+        )
+        assert response.status_code == 422
+
+    def test_invalid_payload_field_rejected(self, client):
+        """Test that invalid payload fields return 422."""
+        # Create project first
+        create_response = client.post(
+            "/api/v1/projects",
+            json={"name": "Test Story"},
+        )
+        project_id = create_response.json()["id"]
+
+        # Try to append character.created with invalid initial_status
+        response = client.post(
+            f"/api/v1/projects/{project_id}/events",
+            json={
+                "event_id": "evt_001",
+                "idempotency_key": "test_key",
+                "type": "character.created",
+                "payload": {
+                    "character_id": "char_001",
+                    "name": "Alice",
+                    "initial_status": "deceased",  # Invalid status value
+                },
+            },
+        )
+        assert response.status_code == 422
+
+    def test_missing_required_payload_field_rejected(self, client):
+        """Test that missing required payload fields return 422."""
+        # Create project first
+        create_response = client.post(
+            "/api/v1/projects",
+            json={"name": "Test Story"},
+        )
+        project_id = create_response.json()["id"]
+
+        # Try to append character.created without required character_id
+        response = client.post(
+            f"/api/v1/projects/{project_id}/events",
+            json={
+                "event_id": "evt_001",
+                "idempotency_key": "test_key",
+                "type": "character.created",
+                "payload": {
+                    "name": "Alice",  # Missing character_id
+                },
+            },
+        )
+        assert response.status_code == 422
+
+
 class TestStateEndpoint:
     """Tests for state endpoints."""
 

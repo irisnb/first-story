@@ -20,10 +20,10 @@ class Settings(BaseSettings):
     # API
     api_prefix: str = "/api/v1"
 
-    # CORS
-    cors_origins: list[str] = ["*"]
+    # CORS - restricted to localhost for security
+    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000"]
     cors_allow_credentials: bool = True
-    cors_allow_methods: list[str] = ["*"]
+    cors_allow_methods: list[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     cors_allow_headers: list[str] = ["*"]
 
     class Config:

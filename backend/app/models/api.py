@@ -3,7 +3,10 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from .common import CharacterStatus
+from .events import EventType
 
 
 # Request models
@@ -28,6 +31,43 @@ class AppendEventRequest(BaseModel):
     )
     actor: str = Field(default="user", description="Origin of the event")
     batch_id: Optional[str] = Field(None, description="Batch identifier")
+
+    @field_validator("type")
+    @classmethod
+    def validate_event_type(cls, v: str) -> str:
+        """Validate that event type is a known EventType."""
+        try:
+            EventType(v)
+        except ValueError:
+            valid_types = [e.value for e in EventType]
+            raise ValueError(
+                f"Unknown event type '{v}'. Valid types: {', '.join(valid_types)}"
+            ) from None
+        return v
+
+    @field_validator("payload")
+    @classmethod
+    def validate_payload(cls, v: dict[str, Any], info: Any) -> dict[str, Any]:
+        """Validate payload based on event type."""
+        event_type = info.data.get("type")
+        if not event_type:
+            return v
+
+        if event_type == "character.created":
+            # Validate character_id is present
+            if "character_id" not in v:
+                raise ValueError("payload must contain 'character_id' for character.created event")
+
+            # Validate initial_status if present
+            if "initial_status" in v:
+                status = v["initial_status"]
+                valid_statuses = [s.value for s in CharacterStatus]
+                if status not in valid_statuses:
+                    raise ValueError(
+                        f"Invalid initial_status '{status}'. Valid values: {', '.join(valid_statuses)}"
+                    )
+
+        return v
 
 
 # Response models

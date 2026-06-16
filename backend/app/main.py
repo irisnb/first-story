@@ -1,11 +1,13 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .api import router
 from .config import get_settings
@@ -55,6 +57,11 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
 # Include API routes
 app.include_router(router, prefix=settings.api_prefix)
 
+# Mount demo UI at /demo
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/demo", StaticFiles(directory=static_dir, html=True), name="demo")
+
 
 # Health check endpoint
 @app.get("/health", response_model=HealthResponse, tags=["health"])
@@ -73,5 +80,6 @@ async def root():
     return {
         "message": "First Story Backend API",
         "docs": "/docs",
+        "demo": "/demo",
         "health": "/health",
     }

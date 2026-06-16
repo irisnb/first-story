@@ -43,19 +43,20 @@ class EventLogService:
 
         max_seq = 0
         with open(self.log_file, "r", encoding="utf-8") as f:
-            for line in f:
+            for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
                     continue
                 try:
                     event_data = json.loads(line)
-                    idempotency_key = event_data.get("idempotency_key")
-                    seq = event_data.get("seq", 0)
-                    if idempotency_key and seq:
-                        self._idempotency_index[idempotency_key] = seq
-                        max_seq = max(max_seq, seq)
-                except json.JSONDecodeError:
-                    continue
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Malformed JSON at line {line_num}: {e}") from e
+
+                idempotency_key = event_data.get("idempotency_key")
+                seq = event_data.get("seq", 0)
+                if idempotency_key and seq:
+                    self._idempotency_index[idempotency_key] = seq
+                    max_seq = max(max_seq, seq)
 
         self._next_seq = max_seq + 1
 
@@ -148,28 +149,35 @@ class EventLogService:
 
         Yields:
             SystemEvent objects in ascending seq order
+
+        Raises:
+            ValueError: If JSON is malformed or event data is invalid
         """
         if not self.log_file.exists():
             return
 
         with open(self.log_file, "r", encoding="utf-8") as f:
-            for line in f:
+            for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
                     continue
                 try:
                     event_data = json.loads(line)
-                    seq = event_data.get("seq", 0)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Malformed JSON at line {line_num}: {e}") from e
 
-                    # Filter by seq range
-                    if from_seq is not None and seq < from_seq:
-                        continue
-                    if to_seq is not None and seq > to_seq:
-                        continue
+                seq = event_data.get("seq", 0)
 
-                    yield SystemEvent(**event_data)
-                except (json.JSONDecodeError, Exception):
+                # Filter by seq range
+                if from_seq is not None and seq < from_seq:
                     continue
+                if to_seq is not None and seq > to_seq:
+                    continue
+
+                try:
+                    yield SystemEvent(**event_data)
+                except Exception as e:
+                    raise ValueError(f"Invalid event data at line {line_num}: {e}") from e
 
     def get_events_by_batch(self, batch_id: str) -> list[SystemEvent]:
         """Get all events with the given batch_id.
