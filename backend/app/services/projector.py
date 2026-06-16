@@ -20,7 +20,6 @@ from ..models import (
     Fact,
     PlotEvent,
     Story,
-    StoryClock,
     StoryState,
     SystemEvent,
 )

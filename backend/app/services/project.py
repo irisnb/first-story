@@ -8,7 +8,6 @@ This service implements the project-service spec:
 """
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional

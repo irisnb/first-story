@@ -8,7 +8,6 @@ import pytest
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services import EventLogService
 
 
 class TestEventLogService:
