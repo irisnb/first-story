@@ -1,0 +1,28 @@
+{
+  "projection_schema_version": "1.0",
+  "log_head_seq": 1,
+  "head_event_id": "evt_001",
+  "source_document_revision": null,
+  "source_document_checksum": null,
+  "story": {
+    "story_clock": null,
+    "characters": [
+      {
+        "id": "char_001",
+        "name": "Alice",
+        "status": "unknown",
+        "status_since_event_id": "evt_001",
+        "status_note": null,
+        "gender": null,
+        "relations": [],
+        "known_fact_ids": [],
+        "attributes": {}
+      }
+    ],
+    "plot_events": [],
+    "facts": [],
+    "continuity_events": [],
+    "project_preferences": []
+  },
+  "updated_at": "2026-06-16T21:45:35.017213"
+}

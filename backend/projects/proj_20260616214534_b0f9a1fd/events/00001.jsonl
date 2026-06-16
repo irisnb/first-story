@@ -1,0 +1,1 @@
+{"event_id": "evt_001", "idempotency_key": "duplicate_key", "seq": 1, "timestamp": "2026-06-16T21:45:34.966012", "type": "character.created", "schema_version": "1.0", "payload": {"character_id": "char_001"}, "base_state_version": 0, "actor": "user"}

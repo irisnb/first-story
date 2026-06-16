@@ -1,0 +1,16 @@
+{
+  "projection_schema_version": "1.0",
+  "log_head_seq": 0,
+  "head_event_id": null,
+  "source_document_revision": null,
+  "source_document_checksum": null,
+  "story": {
+    "story_clock": null,
+    "characters": [],
+    "plot_events": [],
+    "facts": [],
+    "continuity_events": [],
+    "project_preferences": []
+  },
+  "updated_at": null
+}
