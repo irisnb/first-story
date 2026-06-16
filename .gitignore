@@ -1,1 +1,13 @@
 .omo/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# 后端运行时数据（测试/运行时生成的项目，非源码）
+backend/projects/
+
