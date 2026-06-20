@@ -60,6 +60,9 @@ class EventType(str, Enum):
     # Manuscript adoption (chat content promoted into prose)
     MANUSCRIPT_ADOPTED = "manuscript.adopted"
 
+    # Context summary events
+    CONTEXT_SUMMARY_UPDATED = "context_summary.updated"
+
 
 class SystemEvent(BaseModel):
     """A system event in the append-only log.

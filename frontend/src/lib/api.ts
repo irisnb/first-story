@@ -6,6 +6,7 @@ import type {
   AdoptRequest,
   AdoptResponse,
   CardActionResponse,
+  ChatMessageListResponse,
   ChatRequest,
   ChatResponse,
   CreateProjectRequest,
@@ -82,6 +83,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  getChatMessages: (projectId: string, before?: string, limit = 50) =>
+    request<ChatMessageListResponse>(
+      `${API_PREFIX}/projects/${projectId}/chat/messages?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`,
+    ),
 
   adopt: (projectId: string, body: AdoptRequest) =>
     request<AdoptResponse>(`${API_PREFIX}/projects/${projectId}/manuscript/adopt`, {

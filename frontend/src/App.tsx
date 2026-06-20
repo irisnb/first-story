@@ -1,5 +1,6 @@
 import './App.css'
 import { useUiStore, type ViewKey } from '@/lib/store'
+import { ChatRuntimeProvider } from '@/lib/chat-runtime-context'
 import { ProjectPicker } from '@/components/ProjectPicker'
 import { HomeView } from '@/views/HomeView'
 import { ModulesView } from '@/views/ModulesView'
@@ -23,68 +24,70 @@ function App() {
   const jumpToManuscript = useUiStore((s) => s.jumpToManuscript)
 
   return (
-    <div className="app-root">
-      <nav className="side-nav" aria-label="主导航">
-        <div className="side-nav__brand">
-          <span className="side-nav__title">Frist story</span>
-          <span className="side-nav__subtitle">剧作老师 · 只递证据</span>
-        </div>
+    <ChatRuntimeProvider>
+      <div className="app-root">
+        <nav className="side-nav" aria-label="主导航">
+          <div className="side-nav__brand">
+            <span className="side-nav__title">Frist story</span>
+            <span className="side-nav__subtitle">剧作老师 · 只递证据</span>
+          </div>
 
-        <div className="side-nav__project">
-          <ProjectPicker />
-        </div>
+          <div className="side-nav__project">
+            <ProjectPicker />
+          </div>
 
-        <ul className="side-nav__list">
-          {NAV_ITEMS.map((item) => (
-            <li key={item.key}>
+          <ul className="side-nav__list">
+            {NAV_ITEMS.map((item) => (
+              <li key={item.key}>
+                <button
+                  type="button"
+                  className={`side-nav__item${activeView === item.key ? ' is-active' : ''}`}
+                  aria-current={activeView === item.key ? 'page' : undefined}
+                  onClick={() => setView(item.key)}
+                >
+                  <span className="side-nav__item-label">{item.label}</span>
+                  <span className="side-nav__item-desc">{item.desc}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {/* 直达正文：用户随时可一键跳到正文编辑器 */}
+          <button
+            type="button"
+            className="side-nav__jump"
+            onClick={jumpToManuscript}
+          >
+            直达正文
+          </button>
+
+          {/* 五兄弟速览：世界观 / 角色 / 剧情 / 主题 / 结构 */}
+          <div className="side-nav__modules" aria-label="五大模块">
+            {STORY_MODULE_LABELS.map((label) => (
               <button
+                key={label}
                 type="button"
-                className={`side-nav__item${activeView === item.key ? ' is-active' : ''}`}
-                aria-current={activeView === item.key ? 'page' : undefined}
-                onClick={() => setView(item.key)}
+                className="side-nav__module-chip"
+                onClick={() => setView('modules')}
               >
-                <span className="side-nav__item-label">{item.label}</span>
-                <span className="side-nav__item-desc">{item.desc}</span>
+                {label}
               </button>
-            </li>
-          ))}
-        </ul>
+            ))}
+          </div>
 
-        {/* 直达正文：用户随时可一键跳到正文编辑器 */}
-        <button
-          type="button"
-          className="side-nav__jump"
-          onClick={jumpToManuscript}
-        >
-          直达正文
-        </button>
+          <p className="side-nav__hint">
+            你比我懂你的故事。我只在你需要时递上证据，从不替你下定论。
+          </p>
+        </nav>
 
-        {/* 五兄弟速览：世界观 / 角色 / 剧情 / 主题 / 结构 */}
-        <div className="side-nav__modules" aria-label="五大模块">
-          {STORY_MODULE_LABELS.map((label) => (
-            <button
-              key={label}
-              type="button"
-              className="side-nav__module-chip"
-              onClick={() => setView('modules')}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <p className="side-nav__hint">
-          你比我懂你的故事。我只在你需要时递上证据，从不替你下定论。
-        </p>
-      </nav>
-
-      <main className="app-main">
-        {activeView === 'home' && <HomeView />}
-        {activeView === 'modules' && <ModulesView />}
-        {activeView === 'manuscript' && <ManuscriptView />}
-        {activeView === 'settings' && <SettingsView />}
-      </main>
-    </div>
+        <main className="app-main">
+          {activeView === 'home' && <HomeView />}
+          {activeView === 'modules' && <ModulesView />}
+          {activeView === 'manuscript' && <ManuscriptView />}
+          {activeView === 'settings' && <SettingsView />}
+        </main>
+      </div>
+    </ChatRuntimeProvider>
   )
 }
 

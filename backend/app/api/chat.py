@@ -133,6 +133,75 @@ async def chat(
     )
 
 
+# --------------------------------------------------------- chat history
+
+
+class ChatMessage(BaseModel):
+    """A single chat message from history."""
+
+    message_id: str
+    role: str = Field(..., description="user or assistant")
+    content: str
+    timestamp: str
+
+
+class ChatMessageListResponse(BaseModel):
+    """List of chat messages for a project."""
+
+    messages: list[ChatMessage]
+    total: int
+    has_more: bool = Field(
+        default=False, description="True if there are more messages before this range"
+    )
+
+
+@router.get("/chat/messages", response_model=ChatMessageListResponse)
+async def get_chat_messages(
+    project_id: str,
+    limit: int = 50,
+    before: str | None = None,
+    project_service: ProjectService = Depends(get_project_service),
+) -> ChatMessageListResponse:
+    """Get chat messages for a project with pagination.
+
+    Args:
+        limit: Maximum number of messages to return (default 50)
+        before: Message ID to get messages before (for loading older messages)
+
+    Returns messages sorted by timestamp ascending (oldest first).
+    """
+    services = project_service.get_services(project_id)
+    if not services:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project '{project_id}' not found",
+        )
+    event_log, _ = services
+
+    # Use the indexed method for efficient pagination
+    events, has_more = event_log.get_chat_messages(
+        limit=limit,
+        before_message_id=before,
+    )
+
+    messages: list[ChatMessage] = []
+    for event in events:
+        payload = event.payload
+        messages.append(
+            ChatMessage(
+                message_id=payload.get("message_id", ""),
+                role=payload.get("role", "user"),
+                content=payload.get("content", ""),
+                timestamp=event.timestamp.isoformat() if event.timestamp else "",
+            )
+        )
+
+    # Sort by timestamp ascending (oldest first)
+    messages.sort(key=lambda m: m.timestamp)
+    total = event_log.get_chat_message_count()
+    return ChatMessageListResponse(messages=messages, total=total, has_more=has_more)
+
+
 # --------------------------------------------------------------- adoption
 
 

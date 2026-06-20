@@ -36,16 +36,17 @@ logger = logging.getLogger("first_story.extraction")
 
 
 _EXTRACTION_SYSTEM = (
-    "你是剧本结构化提取器。你会收到一段剧本正文，以及已经确定的角色名单与场景。"
+    "你是剧本结构化提取器。你会收到一段文本，以及已经确定的角色名单。"
     "你的任务：只提取剧情事件、角色状态变化、事实断言，输出严格 JSON。"
     "不要评判创作好坏，不要给建议，不要改写正文。"
     "每条 fact 必须给出 source_quote：从正文中原样摘录的、能支撑该 fact 的最短文本片段。"
+    "剧情事件(plot_events)是重要的情节转折点或场景，需要有 summary 概述。"
 )
 
 _EXTRACTION_TEMPLATE = """\
-已确定角色（来自 Fountain 结构，勿改动）：{characters}
+已确定角色：{characters}
 
-正文：
+文本：
 <<<
 {content}
 >>>
@@ -60,15 +61,22 @@ _EXTRACTION_TEMPLATE = """\
       "character_statuses": {{ "角色名": "alive | dead | unknown" }},
       "source_quote": "正文中原样摘录、支撑该 fact 的最短片段"
     }}
+  ],
+  "plot_events": [
+    {{
+      "summary": "事件概述（如：主角在厕所遇到吉祥物，被要求成为魔法少女）",
+      "participants": ["参与角色名"],
+      "story_time": "故事时间（可选，如：白天、某年某月）"
+    }}
   ]
 }}
 说明：
+- facts：提取所有事实性描述，包括角色属性、关系、设定等
+- plot_events：提取重要的情节事件，如关键转折、场景变化、重要行动等
 - character_statuses 是「角色名 → 生死状态」的映射：对该 fact 涉及的每个角色，分别判断其在这句话语境下是活着(alive)、已死亡(dead)还是无法确定(unknown)。
-- 判断依据整句语义与上下文，由你自行理解。例如：明说去世/葬礼/遗体 → dead；本人正在场说话、行动、被描述为当下活动 → alive；信息不足以确认 → unknown。
-- 指代归一（重要）：同一个角色在原文里可能有多种称呼（全名、简称、昵称、亲属称谓，如「姐姐」「姐」「林姐」可能指同一人）。请基于上下文判断哪些称呼指向同一角色，并在所有 fact 的 about_characters 与 character_statuses 中，对同一角色统一使用同一个规范名（优先采用最完整、最明确的那个写法）。不要让同一个人出现两种不同的名字。
-- about_characters 与 character_statuses 的角色名必须完全一致、用同一写法。
+- 指代归一（重要）：同一个角色在原文里可能有多种称呼。请在所有输出中对同一角色统一使用同一个规范名。
 - 不要评判、不要建议，只做客观提取。
-若没有可提取的事实，返回 {{"facts": []}}。"""
+若没有可提取的内容，返回 {{"facts": [], "plot_events": []}}。"""
 
 
 @dataclass
@@ -79,10 +87,14 @@ class ExtractedFact:
     source_quote: str
     start: int
     end: int
-    # Per-character normalized status: {character_name: "alive"|"dead"|"unknown"}.
-    # The semantic judgment is made by the LLM per character, never re-derived
-    # from keywords downstream.
     character_statuses: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class ExtractedPlotEvent:
+    summary: str
+    participants: list[str]
+    story_time: Optional[str] = None
 
 
 @dataclass
@@ -93,6 +105,8 @@ class ExtractionResult:
     new_character_ids: list[str] = field(default_factory=list)
     facts: list[ExtractedFact] = field(default_factory=list)
     fact_ids: list[str] = field(default_factory=list)
+    plot_events: list[ExtractedPlotEvent] = field(default_factory=list)
+    plot_event_ids: list[str] = field(default_factory=list)
     llm_succeeded: bool = False
     llm_error: Optional[str] = None
     batch_id: Optional[str] = None
@@ -190,7 +204,7 @@ class ExtractionService:
             return result
 
         try:
-            extracted = self._llm_extract(content, parsed.characters)
+            extracted_facts, extracted_plot_events = self._llm_extract(content, parsed.characters)
         except Exception as exc:  # noqa: BLE001 - isolate; never block writing
             logger.warning("extraction LLM stage failed: %s", exc)
             result.llm_error = str(exc)
@@ -199,8 +213,47 @@ class ExtractionService:
             return result
 
         result.llm_succeeded = True
-        result.facts = extracted
-        for fact in extracted:
+        result.facts = extracted_facts
+        result.plot_events = extracted_plot_events
+        
+        # 从 facts 中收集所有提及的角色名，创建角色（如果不存在）
+        all_mentioned_characters: set[str] = set()
+        for fact in extracted_facts:
+            for name in fact.about_characters:
+                if name:
+                    all_mentioned_characters.add(name)
+        
+        # 从 plot_events 中也收集角色
+        for pe in extracted_plot_events:
+            for name in pe.participants:
+                if name:
+                    all_mentioned_characters.add(name)
+        
+        # 为新角色创建事件（candidate 模式也创建，标记 acceptance_status）
+        existing_names = self._existing_character_names()
+        for name in all_mentioned_characters:
+            if name in existing_names:
+                continue
+            existing_names.add(name)
+            cid = self._new_id("char")
+            event_id = self._new_id("evt")
+            self._writer.append(
+                event_id=event_id,
+                idempotency_key=f"{batch_id}:char:{name}",
+                event_type="character.created",
+                payload={
+                    "character_id": cid,
+                    "name": name,
+                    "initial_status": "unknown",
+                    "acceptance_status": acceptance_status,  # 标记是 candidate 还是 committed
+                },
+                actor="extraction_agent",
+                batch_id=batch_id,
+            )
+            result.new_character_ids.append(cid)
+        
+        # 写入 facts
+        for fact in extracted_facts:
             fid = self._new_id("fact")
             event_id = self._new_id("evt")
             self._writer.append(
@@ -227,6 +280,28 @@ class ExtractionService:
             )
             result.fact_ids.append(fid)
 
+        # 写入 plot_events
+        for pe in extracted_plot_events:
+            pe_id = self._new_id("pe")
+            event_id = self._new_id("evt")
+            self._writer.append(
+                event_id=event_id,
+                idempotency_key=f"{batch_id}:pe:{pe_id}",
+                event_type="plot_event.created",
+                payload={
+                    "plot_event_id": pe_id,
+                    "summary": pe.summary,
+                    "story_time": {"type": "unknown", "text": pe.story_time} if pe.story_time else {"type": "unknown"},
+                    "participant_character_ids": [],
+                    "participant_character_names": pe.participants,
+                    "acceptance_status": acceptance_status,
+                    "source_type": source_type,
+                },
+                actor="extraction_agent",
+                batch_id=batch_id,
+            )
+            result.plot_event_ids.append(pe_id)
+
         if not is_candidate:
             self._commit_batch(batch_id, document_id, revision)
         return result
@@ -247,7 +322,7 @@ class ExtractionService:
 
     def _llm_extract(
         self, content: str, characters: list[str]
-    ) -> list[ExtractedFact]:
+    ) -> tuple[list[ExtractedFact], list[ExtractedPlotEvent]]:
         prompt = _EXTRACTION_TEMPLATE.format(
             characters=", ".join(characters) if characters else "（暂无）",
             content=content,
@@ -272,7 +347,18 @@ class ExtractionService:
                     character_statuses=statuses,
                 )
             )
-        return facts
+
+        plot_events: list[ExtractedPlotEvent] = []
+        for raw in data.get("plot_events", []):
+            plot_events.append(
+                ExtractedPlotEvent(
+                    summary=(raw.get("summary") or "").strip(),
+                    participants=[p for p in raw.get("participants", []) if p],
+                    story_time=raw.get("story_time"),
+                )
+            )
+
+        return facts, plot_events
 
     @staticmethod
     def _parse_statuses(raw: dict, about: list[str]) -> dict[str, str]:

@@ -5,14 +5,25 @@ This service implements the event-log-service spec:
 - Idempotency checking
 - Batch boundary support
 - Read events by sequence
+- Chat message index for efficient pagination
 """
 
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator, Optional
 
 from ..models import SystemEvent
+
+
+@dataclass
+class ChatMessageIndex:
+    """Index entry for a chat message."""
+
+    seq: int
+    message_id: str
+    timestamp: str
 
 
 class EventLogService:
@@ -33,11 +44,14 @@ class EventLogService:
         # Track the highest seq
         self._next_seq: int = 1
 
-        # Build index on startup
-        self._build_idempotency_index()
+        # Chat message index for efficient pagination
+        self._chat_message_index: list[ChatMessageIndex] = []
 
-    def _build_idempotency_index(self) -> None:
-        """Build the in-memory idempotency index by scanning the log file."""
+        # Build indexes on startup
+        self._build_indexes()
+
+    def _build_indexes(self) -> None:
+        """Build the in-memory indexes by scanning the log file."""
         if not self.log_file.exists():
             return
 
@@ -54,11 +68,32 @@ class EventLogService:
 
                 idempotency_key = event_data.get("idempotency_key")
                 seq = event_data.get("seq", 0)
+                event_type = event_data.get("type", "")
+
                 if idempotency_key and seq:
                     self._idempotency_index[idempotency_key] = seq
                     max_seq = max(max_seq, seq)
 
+                # Build chat message index
+                if event_type == "chat.message":
+                    payload = event_data.get("payload", {})
+                    message_id = payload.get("message_id", "")
+                    timestamp = event_data.get("timestamp", "")
+                    if message_id:
+                        self._chat_message_index.append(
+                            ChatMessageIndex(
+                                seq=seq,
+                                message_id=message_id,
+                                timestamp=timestamp,
+                            )
+                        )
+
         self._next_seq = max_seq + 1
+
+    def _build_idempotency_index(self) -> None:
+        """Build the in-memory idempotency index by scanning the log file."""
+        # Kept for backward compatibility, now calls _build_indexes
+        self._build_indexes()
 
     def _assign_seq(self) -> int:
         """Assign a new monotonically increasing sequence number."""
@@ -131,8 +166,20 @@ class EventLogService:
         with open(self.log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
 
-        # Update index
+        # Update indexes
         self._idempotency_index[idempotency_key] = seq
+
+        # Update chat message index if this is a chat message
+        if event_type == "chat.message":
+            message_id = payload.get("message_id", "")
+            if message_id:
+                self._chat_message_index.append(
+                    ChatMessageIndex(
+                        seq=seq,
+                        message_id=message_id,
+                        timestamp=event["timestamp"],
+                    )
+                )
 
         return seq, True
 
@@ -201,3 +248,62 @@ class EventLogService:
     def get_max_seq(self) -> int:
         """Get the maximum seq in the log."""
         return self._next_seq - 1
+
+    def get_chat_message_count(self) -> int:
+        """Get the total number of chat messages."""
+        return len(self._chat_message_index)
+
+    def get_chat_messages(
+        self,
+        limit: int = 50,
+        before_message_id: Optional[str] = None,
+    ) -> tuple[list[SystemEvent], bool]:
+        """Get chat messages using the index for efficient pagination.
+
+        Args:
+            limit: Maximum number of messages to return
+            before_message_id: Return messages before this message ID
+
+        Returns:
+            Tuple of (messages, has_more) where has_more indicates if there
+            are more messages before the returned range
+        """
+        if not self._chat_message_index:
+            return [], False
+
+        # Find the index position for before_message_id
+        if before_message_id:
+            # Find the index of the message
+            idx = None
+            for i, entry in enumerate(self._chat_message_index):
+                if entry.message_id == before_message_id:
+                    idx = i
+                    break
+            if idx is None:
+                # Message not found, return empty
+                return [], False
+            # Get messages before this index
+            start_idx = max(0, idx - limit)
+            end_idx = idx
+            has_more = start_idx > 0
+        else:
+            # Get the most recent messages
+            total = len(self._chat_message_index)
+            start_idx = max(0, total - limit)
+            end_idx = total
+            has_more = start_idx > 0
+
+        # Get the index entries for this range
+        index_entries = self._chat_message_index[start_idx:end_idx]
+
+        if not index_entries:
+            return [], False
+
+        # Read the actual events by seq
+        messages = []
+        for entry in index_entries:
+            for event in self.read_events(from_seq=entry.seq, to_seq=entry.seq):
+                messages.append(event)
+                break
+
+        return messages, has_more

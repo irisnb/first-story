@@ -77,6 +77,7 @@ export interface Character {
   relations?: CharacterRelation[]
   known_fact_ids?: string[]
   attributes?: Record<string, unknown>
+  acceptance_status?: 'candidate' | 'committed' | string
 }
 
 export interface Fact {
@@ -84,8 +85,11 @@ export interface Fact {
   content: string
   story_time?: unknown
   about_character_ids?: string[]
+  about_character_names?: string[]
   extraction_confidence?: number
   lifecycle_status?: string
+  acceptance_status?: 'candidate' | 'committed' | string
+  source_type?: 'chat' | 'document' | string
 }
 
 export interface PlotEvent {
@@ -93,8 +97,10 @@ export interface PlotEvent {
   summary: string
   story_time?: unknown
   participant_character_ids?: string[]
+  participant_character_names?: string[]
   asserted_fact_ids?: string[]
   source_event_id?: string
+  acceptance_status?: 'candidate' | 'committed' | string
 }
 
 export interface ContinuityDelivery {
@@ -166,4 +172,18 @@ export interface AdoptRequest {
 export interface AdoptResponse {
   revision_id: string
   duplicate: boolean
+}
+
+// ---- Chat History ----
+export interface ChatMessage {
+  message_id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
+export interface ChatMessageListResponse {
+  messages: ChatMessage[]
+  total: number
+  has_more: boolean
 }

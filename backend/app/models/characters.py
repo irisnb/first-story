@@ -40,3 +40,7 @@ class Character(BaseModel):
         default_factory=dict,
         description="Dynamic attributes accumulated from facts",
     )
+    acceptance_status: str = Field(
+        default="committed",
+        description="Whether this character is candidate (tentative) or committed (confirmed)",
+    )

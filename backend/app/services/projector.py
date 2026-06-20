@@ -91,6 +91,7 @@ class ProjectorService:
             "project_preference.assumption_confirmed": lambda: self._process_project_preference_assumption(event, story, payload),
             "creative_intent.added": lambda: self._process_creative_intent_added(event, story, payload),
             "creative_intent.archived": lambda: self._process_creative_intent_archived(event, story, payload),
+            "context_summary.updated": lambda: self._process_context_summary_updated(event, story, payload),
             "batch.committed": lambda: None,  # No state change
         }
 
@@ -110,6 +111,7 @@ class ProjectorService:
             relations=[{"target_id": r.get("target_id"), "relation": r.get("relation")} for r in payload.get("relations", [])],
             known_fact_ids=[],
             attributes={},
+            acceptance_status=payload.get("acceptance_status", "committed"),
         )
         story.characters.append(character)
 
@@ -129,8 +131,10 @@ class ProjectorService:
             summary=payload.get("summary", ""),
             story_time=payload.get("story_time", {"type": "unknown"}),
             participant_character_ids=payload.get("participant_character_ids", []),
+            participant_character_names=payload.get("participant_character_names", []),
             asserted_fact_ids=payload.get("asserted_fact_ids", []),
             source_event_id=event.event_id,
+            acceptance_status=payload.get("acceptance_status", "committed"),
         )
         story.plot_events.append(plot_event)
 
@@ -254,20 +258,84 @@ class ProjectorService:
                 memo.status = "archived"
                 break
 
+    def _process_context_summary_updated(self, event: SystemEvent, story: Story, payload: dict) -> None:
+        """Process context_summary.updated event."""
+        from ..models.state import ContextSummary
+        
+        # Update fields from payload
+        cs = story.context_summary
+        if "world_brief" in payload:
+            cs.world_brief = payload["world_brief"]
+        if "plot_brief" in payload:
+            cs.plot_brief = payload["plot_brief"]
+        if "character_brief" in payload:
+            cs.character_brief = payload["character_brief"]
+        if "recent_focus" in payload:
+            cs.recent_focus = payload["recent_focus"]
+        if "last_minor_update" in payload:
+            cs.last_minor_update = payload["last_minor_update"]
+        if "last_major_update" in payload:
+            cs.last_major_update = payload["last_major_update"]
+        if "turn_count" in payload:
+            cs.turn_count = payload["turn_count"]
+
     def _save_projection(self, state: StoryState) -> None:
-        """Persist the projection to file."""
-        with open(self.state_file, "w", encoding="utf-8") as f:
-            json.dump(state.model_dump(mode="json"), f, ensure_ascii=False, indent=2, default=str)
+        """Persist the projection to file atomically.
+        
+        Uses a temp file + atomic replace to avoid corruption on crash.
+        """
+        import os
+        import tempfile
+        
+        # Ensure parent directory exists
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write to temp file first
+        temp_fd, temp_path = tempfile.mkstemp(
+            dir=self.state_file.parent,
+            prefix=".state_tmp_",
+            suffix=".json"
+        )
+        
+        try:
+            with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                json.dump(state.model_dump(mode="json"), f, ensure_ascii=False, indent=2, default=str)
+            
+            # Atomic replace
+            os.replace(temp_path, self.state_file)
+        except Exception:
+            # Clean up temp file on failure
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+            raise
 
     def load_state(self) -> Optional[StoryState]:
         """Load the current projection from file.
 
         Returns:
-            The StoryState if file exists, None otherwise
+            The StoryState if file exists and is up-to-date, None otherwise
+
+        Note:
+            If the event log has new events since the last projection,
+            returns None to trigger a rebuild.
         """
         if not self.state_file.exists():
             return None
 
-        with open(self.state_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return StoryState(**data)
+        try:
+            with open(self.state_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                state = StoryState(**data)
+
+            # Check if the projection is stale (event log has newer events)
+            event_count = self.event_log.get_event_count()
+            if state.log_head_seq < event_count:
+                # Projection is stale, trigger rebuild
+                return None
+
+            return state
+        except Exception:
+            # Corrupted cache, trigger rebuild
+            return None

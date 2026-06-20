@@ -52,6 +52,42 @@ class StyleMemo(BaseModel):
     )
 
 
+class ContextSummary(BaseModel):
+    """对话上下文摘要，用于帮助 LLM 快速进入状态。
+
+    分层更新机制：
+    - 小摘要（10轮）：只更新 recent_focus
+    - 大摘要（30轮）：全面更新所有字段
+    """
+
+    # 大摘要（30轮更新）
+    world_brief: str = Field(
+        default="", description="世界观简述，200字以内"
+    )
+    plot_brief: str = Field(
+        default="", description="情节简述，200字以内"
+    )
+    character_brief: str = Field(
+        default="", description="角色简述，200字以内"
+    )
+
+    # 小摘要（10轮更新）
+    recent_focus: str = Field(
+        default="", description="最近创作焦点，100字以内"
+    )
+
+    # 元信息
+    last_minor_update: Optional[str] = Field(
+        None, description="小摘要更新时间"
+    )
+    last_major_update: Optional[str] = Field(
+        None, description="大摘要更新时间"
+    )
+    turn_count: int = Field(
+        default=0, description="当前对话轮数"
+    )
+
+
 class Story(BaseModel):
     """The story state content."""
 
@@ -81,6 +117,10 @@ class Story(BaseModel):
         default_factory=list,
         description="Global creative-direction notes, level with the five modules. "
         "Never enter contradiction detection; archived, never deleted.",
+    )
+    context_summary: ContextSummary = Field(
+        default_factory=ContextSummary,
+        description="对话上下文摘要，帮助 LLM 快速进入状态",
     )
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useUiStore } from '@/lib/store'
@@ -13,12 +13,7 @@ export function ProjectPicker() {
 
   const { data } = useQuery({ queryKey: ['projects'], queryFn: api.listProjects })
 
-  // 默认选中第一个项目
-  useEffect(() => {
-    if (!currentProjectId && data && data.projects.length > 0) {
-      setProject(data.projects[0].id)
-    }
-  }, [currentProjectId, data, setProject])
+  // 不再自动选中第一个项目，让用户主动选择
 
   const createMutation = useMutation({
     mutationFn: () => api.createProject({ name: name.trim() }),
@@ -41,7 +36,7 @@ export function ProjectPicker() {
         value={currentProjectId ?? ''}
         onChange={(e) => setProject(e.target.value || null)}
       >
-        <option value="" disabled>
+        <option value="">
           选择项目…
         </option>
         {data?.projects.map((p) => (
