@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-// TODO(重做后填写): 指向新前端根目录（相对本文件），例如 './frontend/' 或 './web/'
+// 新前端根目录（相对本文件）
 const NEW_FRONTEND_ROOT = './frontend/'
 // TODO(重做后确认): 入口组件与样式文件名（相对 NEW_FRONTEND_ROOT）
 const APP_SOURCE_PATH = 'src/App.tsx'
