@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* 低饱和、温润底色 —— 不喧宾夺主、不打断心流 */
+    --background: 30 20% 97%;
+    --foreground: 222 16% 22%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 16% 22%;
+    --primary: 222 30% 38%;
+    --primary-foreground: 30 20% 98%;
+    --secondary: 30 16% 92%;
+    --secondary-foreground: 222 16% 28%;
+    --muted: 30 14% 90%;
+    --muted-foreground: 222 10% 46%;
+    --accent: 200 24% 88%;
+    --accent-foreground: 222 20% 26%;
+    --border: 222 12% 86%;
+    --input: 222 12% 86%;
+    --ring: 222 30% 50%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222 18% 11%;
+    --foreground: 30 12% 88%;
+    --card: 222 16% 15%;
+    --card-foreground: 30 12% 88%;
+    --primary: 200 30% 62%;
+    --primary-foreground: 222 24% 12%;
+    --secondary: 222 12% 20%;
+    --secondary-foreground: 30 10% 86%;
+    --muted: 222 12% 18%;
+    --muted-foreground: 222 8% 60%;
+    --accent: 200 18% 26%;
+    --accent-foreground: 30 12% 90%;
+    --border: 222 10% 24%;
+    --input: 222 10% 24%;
+    --ring: 200 30% 56%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+    -webkit-font-smoothing: antialiased;
+  }
+}
