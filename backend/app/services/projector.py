@@ -17,10 +17,12 @@ from ..models import (
     ContinuityEvent,
     ContinuityEventStatus,
     Delivery,
+    DocumentRevision,
     Fact,
     PlotEvent,
     Story,
     StoryState,
+    StyleMemo,
     SystemEvent,
 )
 from .event_log import EventLogService
@@ -81,11 +83,14 @@ class ProjectorService:
             "character.status_updated": lambda: self._process_character_status_updated(event, story, payload),
             "plot_event.created": lambda: self._process_plot_event_created(event, story, payload),
             "fact.created": lambda: self._process_fact_created(event, story, payload),
+            "document.revised": lambda: self._process_document_revised(event, story, payload),
             "continuity_event.created": lambda: self._process_continuity_event_created(event, story, payload),
             "continuity_event.ignored": lambda: self._process_continuity_event_ignored(event, story, payload),
             "continuity_event.resolved": lambda: self._process_continuity_event_resolved(event, story, payload),
             "project_preference.deweighting_set": lambda: self._process_project_preference_deweighting(event, story, payload),
             "project_preference.assumption_confirmed": lambda: self._process_project_preference_assumption(event, story, payload),
+            "creative_intent.added": lambda: self._process_creative_intent_added(event, story, payload),
+            "creative_intent.archived": lambda: self._process_creative_intent_archived(event, story, payload),
             "batch.committed": lambda: None,  # No state change
         }
 
@@ -143,8 +148,28 @@ class ProjectorService:
             source_text_hash=payload.get("source_text_hash", ""),
             source_plot_event_id=payload.get("source_plot_event_id"),
             extraction_confidence=payload.get("extraction_confidence", 0.5),
+            # Historical defaults: facts written before these fields existed
+            # came from editor prose, so they are committed+document.
+            lifecycle_status=payload.get("lifecycle_status", "active"),
+            acceptance_status=payload.get("acceptance_status", "committed"),
+            source_type=payload.get("source_type", "document"),
         )
         story.facts.append(fact)
+
+    def _process_document_revised(self, event: SystemEvent, story: Story, payload: dict) -> None:
+        """Process document.revised event - latest revision wins as projection."""
+        story.current_document = DocumentRevision(
+            revision_id=payload.get("revision_id", ""),
+            document_id=payload.get("document_id", "main"),
+            content=payload.get("content", ""),
+            content_hash=payload.get("content_hash", ""),
+            source_span=payload.get("source_span", {"start": 0, "end": 0}),
+            revised_at=event.timestamp.isoformat()
+            if hasattr(event.timestamp, "isoformat")
+            else str(event.timestamp),
+            source_event_id=event.event_id,
+            restored_from_revision_id=payload.get("restored_from_revision_id"),
+        )
 
     def _process_continuity_event_created(self, event: SystemEvent, story: Story, payload: dict) -> None:
         """Process continuity_event.created event."""
@@ -209,6 +234,25 @@ class ProjectorService:
             related_fact_ids=payload.get("related_fact_ids", []),
         )
         story.project_preferences.append(pref)
+
+    def _process_creative_intent_added(self, event: SystemEvent, story: Story, payload: dict) -> None:
+        """Process creative_intent.added - append an active style memo."""
+        memo = StyleMemo(
+            id=payload.get("memo_id", event.event_id),
+            text=payload.get("text", ""),
+            kind=payload.get("kind") or "未分类",
+            status="active",
+            source_event_id=event.event_id,
+        )
+        story.style_memos.append(memo)
+
+    def _process_creative_intent_archived(self, event: SystemEvent, story: Story, payload: dict) -> None:
+        """Process creative_intent.archived - mark archived, never delete."""
+        memo_id = payload.get("memo_id")
+        for memo in story.style_memos:
+            if memo.id == memo_id:
+                memo.status = "archived"
+                break
 
     def _save_projection(self, state: StoryState) -> None:
         """Persist the projection to file."""

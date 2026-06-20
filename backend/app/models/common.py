@@ -65,11 +65,42 @@ class ContinuityEventStatus(str, Enum):
 
 
 class FactLifecycleStatus(str, Enum):
-    """Lifecycle status of a fact."""
+    """Lifecycle status of a fact.
+
+    Whether the assertion is still in force. Orthogonal to acceptance_status.
+    """
 
     ACTIVE = "active"
     RETRACTED = "retracted"
     SUPERSEDED = "superseded"
+
+
+class FactAcceptanceStatus(str, Enum):
+    """Acceptance status of a fact - how trustworthy its source is.
+
+    Orthogonal to ``FactLifecycleStatus``: a fact can be active+committed or
+    active+candidate. NEVER reuse lifecycle to express this.
+
+    - ``committed``: a formal setting, from editor prose or adopted chat.
+    - ``candidate``: a brainstorm/hypothesis from chat; never enters
+      contradiction detection.
+
+    Historical facts (written before this field existed) default to
+    ``committed`` on read - they all came from editor prose.
+    """
+
+    COMMITTED = "committed"
+    CANDIDATE = "candidate"
+
+
+class FactSourceType(str, Enum):
+    """Where the prose a fact was extracted from originated.
+
+    Historical facts default to ``document`` on read.
+    """
+
+    DOCUMENT = "document"
+    CHAT = "chat"
 
 
 class Severity(str, Enum):

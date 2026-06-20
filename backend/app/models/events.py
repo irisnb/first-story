@@ -26,6 +26,7 @@ class EventType(str, Enum):
     # Character events
     CHARACTER_CREATED = "character.created"
     CHARACTER_STATUS_UPDATED = "character.status_updated"
+    CHARACTER_ALIAS_BOUND = "character.alias_bound"
 
     # Plot events
     PLOT_EVENT_CREATED = "plot_event.created"
@@ -33,6 +34,9 @@ class EventType(str, Enum):
     # Fact events
     FACT_CREATED = "fact.created"
     FACT_RETRACTED = "fact.retracted"
+
+    # Document revision events
+    DOCUMENT_REVISED = "document.revised"
 
     # Continuity events
     CONTINUITY_EVENT_CREATED = "continuity_event.created"
@@ -45,6 +49,16 @@ class EventType(str, Enum):
 
     # Batch events
     BATCH_COMMITTED = "batch.committed"
+
+    # Chat / dialogue events (log-only, never projected)
+    CHAT_MESSAGE = "chat.message"
+
+    # Creative-intent (style memo) events
+    CREATIVE_INTENT_ADDED = "creative_intent.added"
+    CREATIVE_INTENT_ARCHIVED = "creative_intent.archived"
+
+    # Manuscript adoption (chat content promoted into prose)
+    MANUSCRIPT_ADOPTED = "manuscript.adopted"
 
 
 class SystemEvent(BaseModel):
@@ -92,6 +106,21 @@ class CharacterStatusUpdatedPayload(BaseModel):
     reason_fact_id: Optional[str] = None
 
 
+class CharacterAliasBoundPayload(BaseModel):
+    """Payload for character.alias_bound event.
+
+    Records that one or more surface names (aliases) refer to the same
+    character as a canonical name. This is an IDENTITY judgment only - it never
+    asserts anything about a character's alive/dead status. The mapping is
+    append-only; later events can extend the alias set but never delete it.
+    """
+
+    canonical_name: str
+    aliases: list[str] = Field(default_factory=list)
+    confidence: float = 0.8
+    source_batch_id: Optional[str] = None
+
+
 class PlotEventCreatedPayload(BaseModel):
     """Payload for plot_event.created event."""
 
@@ -116,6 +145,19 @@ class FactCreatedPayload(BaseModel):
     source_plot_event_id: Optional[str] = None
     extraction_confidence: float = Field(..., ge=0.0, le=1.0)
     lifecycle_status: str = "active"
+    # Per-character normalized status map: {character_name: alive|dead|unknown}.
+    character_statuses: dict[str, str] = Field(default_factory=dict)
+
+
+class DocumentRevisedPayload(BaseModel):
+    """Payload for document.revised event."""
+
+    revision_id: str
+    document_id: str = "main"
+    content: str
+    content_hash: str
+    source_span: dict
+    restored_from_revision_id: Optional[str] = None
 
 
 class ContinuityEventCreatedPayload(BaseModel):

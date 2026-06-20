@@ -8,6 +8,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from .common import FactLifecycleStatus, SourceSpan, StoryTime
+from .common import FactAcceptanceStatus, FactSourceType
 
 
 class Fact(BaseModel):
@@ -47,5 +48,18 @@ class Fact(BaseModel):
     )
     lifecycle_status: FactLifecycleStatus = Field(
         default=FactLifecycleStatus.ACTIVE,
-        description="Lifecycle state",
+        description="Lifecycle state (active|retracted|superseded)",
+    )
+    acceptance_status: FactAcceptanceStatus = Field(
+        default=FactAcceptanceStatus.COMMITTED,
+        description=(
+            "Source trust: committed (editor/adopted) vs candidate (chat "
+            "brainstorm). Orthogonal to lifecycle_status. Historical facts "
+            "default to committed."
+        ),
+    )
+    source_type: FactSourceType = Field(
+        default=FactSourceType.DOCUMENT,
+        description="Where the source prose came from (document|chat). "
+        "Historical facts default to document.",
     )

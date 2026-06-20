@@ -12,6 +12,23 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.services import ProjectService, ProjectorService
 
 
+@pytest.fixture(autouse=True)
+def _no_real_llm(monkeypatch):
+    """Keep the whole test suite hermetic - never call a real LLM.
+
+    The dev `.env` carries a real DeepSeek key; without this fixture, any test
+    that saves a manuscript would trigger the background extraction batch and
+    make a live network call. We blank the key and reset the cached settings so
+    extraction runs its deterministic stage only.
+    """
+    from app import config
+
+    monkeypatch.setenv("FIRST_STORY_LLM_API_KEY", "")
+    config.get_settings.cache_clear()
+    yield
+    config.get_settings.cache_clear()
+
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for tests."""

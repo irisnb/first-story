@@ -161,3 +161,28 @@ class TestReplayFailFast:
         # Reading events should raise an error for missing required field
         with pytest.raises(Exception):
             list(event_log_service.read_events())
+
+
+class TestNewEventTypesReplay:
+    """Replay must accept the dialogue/intent/adopt event types (group 1.2)."""
+
+    def test_replay_new_event_types_does_not_crash(self, event_log_service):
+        """chat.message / creative_intent.* / manuscript.adopted replay cleanly."""
+        new_types = [
+            "chat.message",
+            "creative_intent.added",
+            "creative_intent.archived",
+            "manuscript.adopted",
+        ]
+        for i, event_type in enumerate(new_types, start=1):
+            seq, was_new = event_log_service.append_event(
+                event_id=f"evt_{i:03d}",
+                idempotency_key=f"new_key_{i}",
+                event_type=event_type,
+                payload={"index": i},
+            )
+            assert was_new is True
+
+        events = list(event_log_service.read_events())
+        assert len(events) == len(new_types)
+        assert [e.type.value for e in events] == new_types

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from .characters import Character
 from .continuity import ContinuityEvent
+from .documents import DocumentRevision
 from .facts import Fact
 from .plot_events import PlotEvent
 from .preferences import ConfirmedAssumptionPreference, DeweightingPreference
@@ -26,6 +27,28 @@ class StoryClock(BaseModel):
     )
     confidence: float = Field(
         default=0.5, ge=0.0, le=1.0, description="Confidence of the time state"
+    )
+
+
+class StyleMemo(BaseModel):
+    """A global creative-direction note (e.g. "动画+collage 拼贴感").
+
+    Style memos sit ALONGSIDE the five story modules - they are creative
+    direction, NOT continuity facts, so they never enter contradiction
+    detection. They are archived (status="archived"), never deleted.
+
+    V1 structure: ``text`` (free-form, required) + optional ``kind`` (a coarse
+    tag like form/tone, falling back to "未分类").
+    """
+
+    id: str = Field(..., description="Stable identifier")
+    text: str = Field(..., description="Free-form creative direction note")
+    kind: str = Field(default="未分类", description="Coarse tag (form/tone/...)")
+    status: str = Field(
+        default="active", description='"active" or "archived" - never deleted'
+    )
+    source_event_id: Optional[str] = Field(
+        None, description="event_id that introduced this memo"
     )
 
 
@@ -50,6 +73,14 @@ class Story(BaseModel):
     project_preferences: list[Union[ConfirmedAssumptionPreference, DeweightingPreference]] = Field(
         default_factory=list,
         description="Project-level preferences, deweighting rules, and confirmed assumptions",
+    )
+    current_document: Optional[DocumentRevision] = Field(
+        None, description="Latest manuscript revision (projection of document.revised events)"
+    )
+    style_memos: list[StyleMemo] = Field(
+        default_factory=list,
+        description="Global creative-direction notes, level with the five modules. "
+        "Never enter contradiction detection; archived, never deleted.",
     )
 
 

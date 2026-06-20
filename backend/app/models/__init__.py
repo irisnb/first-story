@@ -18,7 +18,9 @@ from .common import (
     CharacterStatus,
     ContinuityEventStatus,
     DeliveryMode,
+    FactAcceptanceStatus,
     FactLifecycleStatus,
+    FactSourceType,
     Relation,
     Severity,
     SourceSpan,
@@ -28,6 +30,7 @@ from .common import (
     StoryTimeUnknown,
 )
 from .continuity import ContinuityEvent, Delivery
+from .documents import DocumentRevision, compute_text_hash
 from .events import (
     Actor,
     AssumptionConfirmedPayload,
@@ -38,6 +41,7 @@ from .events import (
     ContinuityEventIgnoredPayload,
     ContinuityEventResolvedPayload,
     DeweightingSetPayload,
+    DocumentRevisedPayload,
     EventType,
     FactCreatedPayload,
     PlotEventCreatedPayload,
@@ -47,7 +51,7 @@ from .facts import Fact
 from .plot_events import PlotEvent
 from .preferences import ConfirmedAssumptionPreference, DeweightingPreference, ProjectPreference
 from .project import Project
-from .state import Story, StoryClock, StoryState
+from .state import Story, StoryClock, StoryState, StyleMemo
 
 __all__ = [
     # Common types
@@ -59,6 +63,8 @@ __all__ = [
     "CharacterStatus",
     "ContinuityEventStatus",
     "FactLifecycleStatus",
+    "FactAcceptanceStatus",
+    "FactSourceType",
     "Severity",
     "DeliveryMode",
     "ArmorLevel",
@@ -77,6 +83,10 @@ __all__ = [
     "DeweightingSetPayload",
     "AssumptionConfirmedPayload",
     "BatchCommittedPayload",
+    "DocumentRevisedPayload",
+    # Documents
+    "DocumentRevision",
+    "compute_text_hash",
     # Story state
     "Character",
     "PlotEvent",
@@ -89,6 +99,7 @@ __all__ = [
     "StoryClock",
     "Story",
     "StoryState",
+    "StyleMemo",
     # Project
     "Project",
     # API

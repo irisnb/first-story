@@ -58,7 +58,10 @@ async def append_event(
         )
     event_log, projector = services
 
-    seq, was_new = event_log.append_event(
+    from ..services.hub import get_hub
+
+    writer = get_hub().writer_for(event_log)
+    seq, was_new = writer.append(
         event_id=request.event_id,
         idempotency_key=request.idempotency_key,
         event_type=request.type,

@@ -14,7 +14,11 @@ from typing import Optional
 import uuid
 
 from ..models import Project, StoryState
+from .contradiction import ContradictionService
+from .document import DocumentService
 from .event_log import EventLogService
+from .evidence_card import EvidenceCardService
+from .extraction import ExtractionService
 from .projector import ProjectorService
 
 
@@ -196,7 +200,138 @@ class ProjectService:
             return None
 
         events_dir = project_dir / "events"
-        event_log = EventLogService(events_dir)
+        # Fetch the single Hub-cached EventLogService for this project so all
+        # writers share one in-memory _next_seq under the per-project lock.
+        # Without this, each call here built a fresh instance, two of which
+        # could compute the same seq and write a duplicate (Oracle MUST-FIX).
+        from .hub import get_hub
+
+        event_log = get_hub().get_event_log(events_dir)
         projector = ProjectorService(event_log, project_dir)
 
         return event_log, projector
+
+    def get_document_service(self, project_id: str) -> Optional[DocumentService]:
+        """Get a DocumentService for a project.
+
+        Args:
+            project_id: The project ID
+
+        Returns:
+            DocumentService if project exists, None otherwise
+        """
+        services = self.get_services(project_id)
+        if not services:
+            return None
+        event_log, _ = services
+        return DocumentService(event_log)
+
+    def get_extraction_service(self, project_id: str) -> Optional[ExtractionService]:
+        """Get an ExtractionService for a project (with configured LLM provider).
+
+        Returns None if the project does not exist. The LLM provider is built
+        from settings; if no key is configured the service still runs its
+        deterministic stage and records the LLM stage as skipped.
+        """
+        services = self.get_services(project_id)
+        if not services:
+            return None
+        event_log, _ = services
+
+        from ..config import get_settings
+        from .llm_provider import get_provider
+
+        settings = get_settings()
+        llm = None
+        if settings.llm_api_key:
+            llm = get_provider(settings)
+        return ExtractionService(event_log, llm_provider=llm)
+
+    def get_alias_resolver_service(self, project_id: str):
+        """Get an AliasResolverService for a project (identity-only LLM pass).
+
+        Returns None if the project does not exist. Like extraction, this uses
+        the configured LLM provider; with no key it simply does nothing and the
+        detector falls back to exact-name grouping.
+        """
+        services = self.get_services(project_id)
+        if not services:
+            return None
+        event_log, _ = services
+
+        from ..config import get_settings
+        from .alias_resolver import AliasResolverService
+        from .llm_provider import get_provider
+
+        settings = get_settings()
+        llm = None
+        if settings.llm_api_key:
+            llm = get_provider(settings)
+        return AliasResolverService(event_log, llm_provider=llm)
+
+    def get_contradiction_service(
+        self, project_id: str
+    ) -> Optional[ContradictionService]:
+        """Get a ContradictionService for a project.
+
+        Returns None if the project does not exist. Detection is purely
+        deterministic over committed Facts and never calls an LLM.
+        """
+        services = self.get_services(project_id)
+        if not services:
+            return None
+        event_log, _ = services
+        return ContradictionService(event_log)
+
+    def get_evidence_card_service(
+        self, project_id: str
+    ) -> Optional[EvidenceCardService]:
+        """Get an EvidenceCardService for a project.
+
+        Returns None if the project does not exist. Handles user ignore/accept
+        decisions on continuity evidence cards (append-only).
+        """
+        services = self.get_services(project_id)
+        if not services:
+            return None
+        event_log, _ = services
+        return EvidenceCardService(event_log)
+
+    def get_dialogue_agent(self, project_id: str):
+        """Get a DialogueAgent for a project (with configured LLM provider).
+
+        Returns None if the project does not exist. With no key the agent keeps
+        the user turn and returns a graceful notice (no LLM call).
+        """
+        services = self.get_services(project_id)
+        if not services:
+            return None
+        event_log, _ = services
+
+        from ..config import get_settings
+        from .dialogue import DialogueAgent
+        from .llm_provider import get_provider
+
+        settings = get_settings()
+        llm = None
+        if settings.llm_api_key:
+            llm = get_provider(settings)
+        return DialogueAgent(event_log, llm_provider=llm)
+
+    def get_style_memos(self, project_id: str) -> list[dict]:
+        """Return active style memos as plain dicts for prompt injection.
+
+        Empty list if the project does not exist or has none.
+        """
+        services = self.get_services(project_id)
+        if not services:
+            return []
+        _, projector = services
+        state = projector.load_state()
+        if state is None:
+            state = projector.rebuild()
+        return [
+            {"text": m.text, "kind": m.kind}
+            for m in state.story.style_memos
+            if m.status == "active"
+        ]

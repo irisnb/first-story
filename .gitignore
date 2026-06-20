@@ -5,8 +5,14 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
 .venv/
 venv/
+
+# 环境变量 / 密钥（绝不入库）
+.env
+.env.*
+!.env.example
 
 # 后端运行时数据（测试/运行时生成的项目，非源码）
 backend/projects/
