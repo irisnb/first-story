@@ -1,0 +1,211 @@
+/* App shell —— 玻璃拟态外壳。低饱和、安静、不喧宾夺主（CLAUDE.md 气质）。 */
+
+.app-root {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  /* 柔和的环境底色，给毛玻璃面板一点可透出的层次 */
+  background:
+    radial-gradient(1200px 600px at 8% -8%, hsl(var(--accent) / 0.5), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, hsl(var(--primary) / 0.12), transparent 55%),
+    hsl(var(--background));
+}
+
+/* 左侧导航 —— 玻璃面板 */
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 1rem;
+  border-right: 1px solid hsl(var(--border) / 0.6);
+  background: hsl(var(--card) / 0.55);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  overflow-y: auto;
+}
+
+.side-nav__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.side-nav__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: hsl(var(--foreground));
+}
+
+.side-nav__subtitle {
+  font-size: 0.72rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.side-nav__project {
+  padding-bottom: 0.25rem;
+}
+
+.side-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.side-nav__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: hsl(var(--foreground));
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.side-nav__item:hover {
+  background: hsl(var(--accent) / 0.55);
+}
+
+.side-nav__item:focus-visible {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.4);
+}
+
+.side-nav__item.is-active {
+  background: hsl(var(--card) / 0.9);
+  border-color: hsl(var(--border));
+}
+
+.side-nav__item-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.side-nav__item-desc {
+  font-size: 0.7rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.side-nav__hint {
+  margin-top: auto;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+}
+
+/* 直达正文快捷入口 */
+.side-nav__jump {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--accent) / 0.5);
+  color: hsl(var(--accent-foreground));
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+.side-nav__jump:hover {
+  background: hsl(var(--accent) / 0.8);
+}
+
+.side-nav__jump:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.4);
+}
+
+/* 五兄弟速览 chips */
+.side-nav__modules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.side-nav__module-chip {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid hsl(var(--border) / 0.7);
+  border-radius: 999px;
+  background: hsl(var(--card) / 0.6);
+  color: hsl(var(--muted-foreground));
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.side-nav__module-chip:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent) / 0.6);
+}
+
+.side-nav__module-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.4);
+}
+
+/* 主区 */
+.app-main {
+  min-width: 0;
+  height: 100vh;
+  padding: 1.5rem;
+  overflow: hidden;
+}
+
+/* 二级页面外壳 —— 玻璃面板 */
+.view-shell {
+  height: 100%;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid hsl(var(--border) / 0.6);
+  border-radius: calc(var(--radius) + 4px);
+  background: hsl(var(--card) / 0.5);
+  backdrop-filter: blur(14px) saturate(115%);
+  -webkit-backdrop-filter: blur(14px) saturate(115%);
+  overflow: auto;
+}
+
+/* 五兄弟网格 */
+.story-module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+/* 证据面板 —— 中性玻璃面，非告警红（系统只递证据，不下结论） */
+.evidence-panel {
+  padding: 1rem;
+  border: 1px solid hsl(var(--border) / 0.6);
+  border-radius: var(--radius);
+  background: hsl(var(--card) / 0.45);
+  backdrop-filter: blur(12px) saturate(110%);
+  -webkit-backdrop-filter: blur(12px) saturate(110%);
+}
+
+/* 窄屏：导航折到顶部 */
+@media (max-width: 860px) {
+  .app-root {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .side-nav {
+    border-right: none;
+    border-bottom: 1px solid hsl(var(--border) / 0.6);
+  }
+  .app-main {
+    height: auto;
+  }
+}
