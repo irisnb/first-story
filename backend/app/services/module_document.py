@@ -103,8 +103,10 @@ class ModuleDocumentService:
         with open(module_file, "w", encoding="utf-8") as f:
             f.write(content)
 
-        # Re-parse to get updated checksum
-        return self.parser.parse(doc.name, content)
+        # Re-parse to get updated checksum, preserve revision
+        parsed = self.parser.parse(doc.name, content)
+        parsed.revision = doc.revision
+        return parsed
 
     def append_to_section(
         self,

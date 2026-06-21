@@ -22,12 +22,16 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import TYPE_CHECKING, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from ..services import ProjectService
 from ..services.hub import get_hub
+
+if TYPE_CHECKING:
+    from ..models.state import StoryState
 
 logger = logging.getLogger("first_story.chat")
 
@@ -133,6 +137,86 @@ def _run_context_summary_update(
     )
 
 
+def _run_classification(
+    project_service: ProjectService,
+    project_id: str,
+    content: str,
+    state: Optional["StoryState"],
+) -> None:
+    """Background classification for module documents.
+
+    Classifies content into modules/sections and appends to module documents.
+    Failure-isolated: errors are logged but not raised.
+
+    Args:
+        project_service: Project service instance
+        project_id: Project ID
+        content: User content to classify
+        state: Current story state for context
+    """
+    import asyncio
+    from ..services.classify import ClassifyService
+    from ..config import get_settings
+    from ..services.llm_provider import get_provider
+
+    try:
+        # Get module document service
+        module_service = project_service.get_module_document_service(project_id)
+        if module_service is None:
+            logger.warning("Cannot classify: module service not found")
+            return
+
+        # Get LLM provider
+        settings = get_settings()
+        llm = None
+        if settings.llm_api_key:
+            llm = get_provider(settings)
+
+        # Get context summaries
+        world_summary = ""
+        character_summary = ""
+        plot_summary = ""
+        if state and state.story and state.story.context_summary:
+            cs = state.story.context_summary
+            world_summary = cs.world_brief
+            character_summary = cs.character_brief
+            plot_summary = cs.plot_brief
+
+        # Run classification
+        classify_service = ClassifyService(llm_provider=llm)
+        result = asyncio.run(classify_service.classify(
+            content=content,
+            world_summary=world_summary,
+            character_summary=character_summary,
+            plot_summary=plot_summary,
+        ))
+
+        # Append to module documents
+        for classification in result.classifications:
+            success, message = module_service.system_append(
+                module_name=classification.module,
+                section_name=classification.section,
+                content=classification.content,
+            )
+            if success:
+                logger.info(
+                    "Classified content to %s/%s: %s",
+                    classification.module,
+                    classification.section,
+                    message,
+                )
+            else:
+                logger.warning(
+                    "Failed to classify to %s/%s: %s",
+                    classification.module,
+                    classification.section,
+                    message,
+                )
+
+    except Exception as e:
+        logger.warning("Classification failed: %s", e)
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     project_id: str,
@@ -169,6 +253,14 @@ async def chat(
             project_id,
             request.message,
             result.user_message_id,
+        )
+        # Also trigger classification for module documents
+        background_tasks.add_task(
+            _run_classification,
+            project_service,
+            project_id,
+            request.message,
+            state,
         )
 
     # Check if context summary update should be triggered

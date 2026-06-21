@@ -9,14 +9,20 @@ import type {
   ChatMessageListResponse,
   ChatRequest,
   ChatResponse,
+  ClassifyRequest,
+  ClassifyResponse,
   CreateProjectRequest,
   DocumentRevision,
   IgnoreRequest,
+  LockResponse,
+  ModuleResponse,
   ProjectListResponse,
   ProjectResponse,
   RevisionListResponse,
   SaveRevisionRequest,
   StateResponse,
+  UpdateModuleRequest,
+  UpdateModuleResponse,
 } from './api-types'
 
 const API_PREFIX = '/api/v1'
@@ -132,4 +138,39 @@ export const api = {
       `${API_PREFIX}/projects/${projectId}/continuity-events/${eventId}/accept`,
       { method: 'POST', body: JSON.stringify(body) },
     ),
+
+  // ---- Modules ----
+  getModule: (projectId: string, moduleName: string) =>
+    request<ModuleResponse>(`${API_PREFIX}/projects/${projectId}/modules/${moduleName}`),
+
+  updateModule: (projectId: string, moduleName: string, body: UpdateModuleRequest) =>
+    request<UpdateModuleResponse>(
+      `${API_PREFIX}/projects/${projectId}/modules/${moduleName}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    ),
+
+  acquireLock: (projectId: string, moduleName: string) =>
+    request<LockResponse>(
+      `${API_PREFIX}/projects/${projectId}/modules/${moduleName}/lock`,
+      { method: 'POST' },
+    ),
+
+  releaseLock: (projectId: string, moduleName: string) =>
+    request<LockResponse>(
+      `${API_PREFIX}/projects/${projectId}/modules/${moduleName}/lock`,
+      { method: 'DELETE' },
+    ),
+
+  extendLock: (projectId: string, moduleName: string) =>
+    request<LockResponse>(
+      `${API_PREFIX}/projects/${projectId}/modules/${moduleName}/heartbeat`,
+      { method: 'POST' },
+    ),
+
+  // ---- Classification ----
+  classify: (projectId: string, body: ClassifyRequest) =>
+    request<ClassifyResponse>(`${API_PREFIX}/projects/${projectId}/classify`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 }

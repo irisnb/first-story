@@ -92,6 +92,7 @@ class ProjectorService:
             "creative_intent.added": lambda: self._process_creative_intent_added(event, story, payload),
             "creative_intent.archived": lambda: self._process_creative_intent_archived(event, story, payload),
             "context_summary.updated": lambda: self._process_context_summary_updated(event, story, payload),
+            "module_document.updated": lambda: self._process_module_document_updated(event, story, payload),
             "batch.committed": lambda: None,  # No state change
         }
 
@@ -278,6 +279,31 @@ class ProjectorService:
             cs.last_major_update = payload["last_major_update"]
         if "turn_count" in payload:
             cs.turn_count = payload["turn_count"]
+
+    def _process_module_document_updated(self, event: SystemEvent, story: Story, payload: dict) -> None:
+        """Process module_document.updated event.
+        
+        Updates the modules field in story state with parsed module content.
+        """
+        from ..models.modules import ModuleDocument, ModuleSection, MODULE_NAMES
+        from .module_parser import ModuleParser
+        
+        module_name = payload.get("module_name", "")
+        if module_name not in MODULE_NAMES:
+            return
+        
+        # Parse module content if provided
+        content = payload.get("content", "")
+        if content:
+            parser = ModuleParser()
+            doc = parser.parse(module_name, content)
+            story.modules[module_name] = doc
+        else:
+            # Update metadata only
+            existing = story.modules.get(module_name)
+            if existing:
+                existing.revision = payload.get("revision", existing.revision)
+                existing.checksum = payload.get("checksum", existing.checksum)
 
     def _save_projection(self, state: StoryState) -> None:
         """Persist the projection to file atomically.

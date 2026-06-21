@@ -187,3 +187,52 @@ export interface ChatMessageListResponse {
   total: number
   has_more: boolean
 }
+
+// ---- Module Documents ----
+export interface ModuleResponse {
+  name: string
+  content: string
+  revision: number
+  checksum: string
+  sections: Record<string, string>
+}
+
+export interface UpdateModuleRequest {
+  content: string
+  revision: number
+  checksum: string
+}
+
+export interface UpdateModuleResponse {
+  name: string
+  revision: number
+  checksum: string
+  message: string
+}
+
+export interface LockResponse {
+  module: string
+  locked: boolean
+  user_id: string | null
+  locked_at: string | null
+  ttl_seconds: number | null
+  message: string
+}
+
+export interface ClassifyRequest {
+  content: string
+  world_summary?: string
+  character_summary?: string
+  plot_summary?: string
+}
+
+export interface ClassificationResult {
+  module: string
+  section: string
+  content: string
+  confidence: number
+}
+
+export interface ClassifyResponse {
+  classifications: ClassificationResult[]
+}
