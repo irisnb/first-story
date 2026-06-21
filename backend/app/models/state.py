@@ -12,6 +12,7 @@ from .characters import Character
 from .continuity import ContinuityEvent
 from .documents import DocumentRevision
 from .facts import Fact
+from .modules import ModuleDocument
 from .plot_events import PlotEvent
 from .preferences import ConfirmedAssumptionPreference, DeweightingPreference
 
@@ -121,6 +122,10 @@ class Story(BaseModel):
     context_summary: ContextSummary = Field(
         default_factory=ContextSummary,
         description="对话上下文摘要，帮助 LLM 快速进入状态",
+    )
+    modules: dict[str, ModuleDocument] = Field(
+        default_factory=dict,
+        description="Five module documents (world, characters, plot, theme, structure)",
     )
 
 

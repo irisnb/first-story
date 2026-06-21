@@ -63,6 +63,9 @@ class EventType(str, Enum):
     # Context summary events
     CONTEXT_SUMMARY_UPDATED = "context_summary.updated"
 
+    # Module document events
+    MODULE_DOCUMENT_UPDATED = "module_document.updated"
+
 
 class SystemEvent(BaseModel):
     """A system event in the append-only log.

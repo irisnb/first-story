@@ -8,6 +8,8 @@ from .preferences import router as preferences_router
 from .projects import router as projects_router
 from .state import router as state_router
 from .chat import router as chat_router
+from .modules import router as modules_router
+from .classify import router as classify_router
 
 router = APIRouter()
 router.include_router(projects_router, tags=["projects"])
@@ -16,5 +18,7 @@ router.include_router(documents_router, tags=["documents"])
 router.include_router(preferences_router, tags=["preferences"])
 router.include_router(state_router, tags=["state"])
 router.include_router(chat_router, tags=["chat"])
+router.include_router(modules_router, tags=["modules"])
+router.include_router(classify_router, tags=["classify"])
 
 __all__ = ["router"]

@@ -82,6 +82,7 @@ class ProjectService:
         - project_preferences.json (empty)
         - events/00001.jsonl (empty)
         - script/current.md (empty)
+        - modules/*.md (five module documents)
         """
         # project.json
         project_file = project_dir / "project.json"
@@ -108,6 +109,11 @@ class ProjectService:
         script_dir = project_dir / "script"
         script_dir.mkdir(exist_ok=True)
         (script_dir / "current.md").touch()
+
+        # modules/*.md (five module documents)
+        from .module_document import ModuleDocumentService
+        module_service = ModuleDocumentService(project_dir)
+        module_service.init_modules()
 
     def list_projects(self) -> list[Project]:
         """List all projects.
@@ -355,3 +361,19 @@ class ProjectService:
             for m in state.story.style_memos
             if m.status == "active"
         ]
+
+    def get_module_document_service(self, project_id: str) -> Optional["ModuleDocumentService"]:
+        """Get a ModuleDocumentService for a project.
+
+        Args:
+            project_id: The project ID
+
+        Returns:
+            ModuleDocumentService if project exists, None otherwise
+        """
+        project_dir = self.get_project_dir(project_id)
+        if not project_dir:
+            return None
+
+        from .module_document import ModuleDocumentService
+        return ModuleDocumentService(project_dir)
