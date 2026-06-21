@@ -1,8 +1,8 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import { useUiStore } from '@/lib/store'
-import { Button } from '@/components/ui/button'
+import { api } from '@/shared/api/api'
+import { useUiStore } from '@/shared/store/ui-store'
+import { Button } from '@/shared/ui/button'
 
 export function ProjectPicker() {
   const currentProjectId = useUiStore((s) => s.currentProjectId)
@@ -80,3 +80,4 @@ export function ProjectPicker() {
     </div>
   )
 }
+

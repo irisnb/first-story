@@ -115,6 +115,11 @@ class ProjectService:
         module_service = ModuleDocumentService(project_dir)
         module_service.init_modules()
 
+        # llm_config.json (empty, will use env fallback)
+        from .llm_config import LLMConfigService
+        llm_config_service = LLMConfigService(project_dir, project.id)
+        llm_config_service.init_config_file()
+
     def list_projects(self) -> list[Project]:
         """List all projects.
 
@@ -236,7 +241,7 @@ class ProjectService:
         """Get an ExtractionService for a project (with configured LLM provider).
 
         Returns None if the project does not exist. The LLM provider is built
-        from settings; if no key is configured the service still runs its
+        from the 'utility' slot; if no key is configured the service still runs its
         deterministic stage and records the LLM stage as skipped.
         """
         services = self.get_services(project_id)
@@ -244,20 +249,16 @@ class ProjectService:
             return None
         event_log, _ = services
 
-        from ..config import get_settings
-        from .llm_provider import get_provider
+        from .llm_provider import get_provider_for_slot
 
-        settings = get_settings()
-        llm = None
-        if settings.llm_api_key:
-            llm = get_provider(settings)
+        llm = get_provider_for_slot(project_id, "utility", self)
         return ExtractionService(event_log, llm_provider=llm)
 
     def get_alias_resolver_service(self, project_id: str):
         """Get an AliasResolverService for a project (identity-only LLM pass).
 
         Returns None if the project does not exist. Like extraction, this uses
-        the configured LLM provider; with no key it simply does nothing and the
+        the 'utility' slot; with no key it simply does nothing and the
         detector falls back to exact-name grouping.
         """
         services = self.get_services(project_id)
@@ -265,14 +266,10 @@ class ProjectService:
             return None
         event_log, _ = services
 
-        from ..config import get_settings
         from .alias_resolver import AliasResolverService
-        from .llm_provider import get_provider
+        from .llm_provider import get_provider_for_slot
 
-        settings = get_settings()
-        llm = None
-        if settings.llm_api_key:
-            llm = get_provider(settings)
+        llm = get_provider_for_slot(project_id, "utility", self)
         return AliasResolverService(event_log, llm_provider=llm)
 
     def get_contradiction_service(
@@ -308,40 +305,34 @@ class ProjectService:
 
         Returns None if the project does not exist. With no key the agent keeps
         the user turn and returns a graceful notice (no LLM call).
+        
+        Uses the 'chat' slot for dialogue (highest quality).
         """
         services = self.get_services(project_id)
         if not services:
             return None
         event_log, projector = services
 
-        from ..config import get_settings
         from .dialogue import DialogueAgent
-        from .llm_provider import get_provider
+        from .llm_provider import get_provider_for_slot
 
-        settings = get_settings()
-        llm = None
-        if settings.llm_api_key:
-            llm = get_provider(settings)
+        llm = get_provider_for_slot(project_id, "chat", self)
         return DialogueAgent(event_log, projector=projector, llm_provider=llm)
 
     def get_context_summary_service(self, project_id: str):
         """Get a ContextSummaryService for a project (with configured LLM provider).
 
-        Returns None if the project does not exist.
+        Returns None if the project does not exist. Uses the 'utility' slot.
         """
         services = self.get_services(project_id)
         if not services:
             return None
         event_log, projector = services
 
-        from ..config import get_settings
         from .context_summary import ContextSummaryService
-        from .llm_provider import get_provider
+        from .llm_provider import get_provider_for_slot
 
-        settings = get_settings()
-        llm = None
-        if settings.llm_api_key:
-            llm = get_provider(settings)
+        llm = get_provider_for_slot(project_id, "utility", self)
         return ContextSummaryService(event_log, projector, llm_provider=llm)
 
     def get_style_memos(self, project_id: str) -> list[dict]:

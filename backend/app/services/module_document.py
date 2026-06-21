@@ -7,7 +7,7 @@ This service implements the module-documents spec:
 - Queue system additions during locks
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 import asyncio
@@ -28,7 +28,7 @@ class QueuedAddition:
     ):
         self.section_name = section_name
         self.content = content
-        self.added_at = added_at or datetime.utcnow()
+        self.added_at = added_at or datetime.now(timezone.utc)
 
 
 class ModuleDocumentService:

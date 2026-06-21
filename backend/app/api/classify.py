@@ -11,7 +11,7 @@ from app.services.classify import ClassifyService
 from app.services.project import ProjectService
 
 
-router = APIRouter(prefix="/api/v1/projects/{project_id}", tags=["classify"])
+router = APIRouter(prefix="/projects/{project_id}", tags=["classify"])
 
 
 def get_project_service() -> ProjectService:

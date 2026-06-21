@@ -3,11 +3,18 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     """Application settings."""
+
+    model_config = ConfigDict(
+        env_prefix="FIRST_STORY_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     # Application
     app_name: str = "First Story Backend"
@@ -39,11 +46,6 @@ class Settings(BaseSettings):
     # Token budget placeholder (0 = unlimited; enforcement is future work).
     llm_token_budget: int = 0
     llm_timeout_seconds: float = 60.0
-
-    class Config:
-        env_prefix = "FIRST_STORY_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 @lru_cache

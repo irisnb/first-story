@@ -151,8 +151,8 @@ class ClassifyService:
         prompt = CLASSIFY_PROMPT_TEMPLATE.format(context=context, content=content)
 
         try:
-            response = await self.llm_provider.generate(prompt)
-            return self._parse_response(response)
+            response = self.llm_provider.complete(prompt)
+            return self._parse_response(response.text)
         except Exception:
             # On error, return empty
             return ClassifyResponse(classifications=[])

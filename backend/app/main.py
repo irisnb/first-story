@@ -54,14 +54,8 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     )
 
 
-# Include API routes
+# Include API routes FIRST (before frontend catch-all)
 app.include_router(router, prefix=settings.api_prefix)
-
-# Mount demo UI at /demo
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
-    app.mount("/demo", StaticFiles(directory=static_dir, html=True), name="demo")
-
 
 # Health check endpoint
 @app.get("/health", response_model=HealthResponse, tags=["health"])
@@ -73,13 +67,27 @@ async def health_check() -> HealthResponse:
     )
 
 
-# Root endpoint
-@app.get("/", tags=["root"])
-async def root():
-    """Root endpoint - redirects to docs."""
-    return {
-        "message": "First Story Backend API",
-        "docs": "/docs",
-        "demo": "/demo",
-        "health": "/health",
-    }
+# Mount demo UI at /demo
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/demo", StaticFiles(directory=static_dir, html=True), name="demo")
+
+# Mount frontend dist at root (for production)
+frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+if frontend_dist.exists():
+    # Mount assets first (more specific path)
+    assets_dir = frontend_dist / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    # Mount index.html for SPA fallback - but NOT for /api or /health paths
+    from fastapi.responses import FileResponse
+
+    @app.get("/{full_path:path}", tags=["frontend"])
+    async def serve_frontend(full_path: str):
+        """Serve frontend SPA."""
+        # Check if requesting a specific file
+        file_path = frontend_dist / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        # Otherwise serve index.html for SPA routing
+        return FileResponse(frontend_dist / "index.html")

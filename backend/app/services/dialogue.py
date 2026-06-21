@@ -64,11 +64,23 @@ _SYSTEM_PROMPT = """你是创作助手，陪用户一起探索故事。你只是
 每次回复，你必须在回复正文之后另起一行，输出一行意图标注，格式严格为：
 <intent>ignore</intent> 或 <intent>candidate</intent>
 
-判断标准：
-- candidate：用户提到了角色、设定、情节元素、世界观细节、或对故事有任何具体描述。包括：角色身份/关系/动机、故事背景、情节发展、世界观规则、具体场景描述等。**只要用户说了具体的内容，就算 candidate**。
-- ignore：只有纯粹的闲聊、与故事无关的提问、或用户明确表示"不算数"时才用 ignore。
+判断标准（非常重要，请严格遵守）：
 
-**重要：拿不准时，倾向 candidate 而不是 ignore。宁可多提取，不可漏掉用户的创作。**
+**candidate（默认选项，90%的情况都用这个）：**
+用户提到了以下任何内容，都必须标记为 candidate：
+- 角色信息：名字、年龄、性格、外貌、背景、关系、家庭等
+- 情节内容：场景、事件、冲突、转折、结局、战斗、对话等
+- 世界观：魔法规则、代价、设定、地点、物品、敌人等
+- 结构：幕、主题、想写的场景、剧本构思等
+- 任何具体的故事细节、画面、动作描述
+
+**ignore（仅限以下情况）：**
+- 用户说"算了"、"不算"、"取消"、"当没说过"
+- 用户明确在聊与故事完全无关的话题（比如"今天天气怎样"）
+- 纯粹的问候或告别（"你好"、"再见"）
+
+**核心原则：宁可误判为 candidate，绝不漏掉任何创作内容。**
+只要用户的消息里有任何可以放进故事的内容，就必须是 candidate。
 
 你绝不能输出 committed 或任何其他值。"""
 
@@ -248,16 +260,17 @@ class DialogueAgent:
 
         Intent is taken ONLY from an ``<intent>...</intent>`` tag and may only be
         ``ignore`` or ``candidate``; anything else (missing tag, ``committed``,
-        garbage) degrades conservatively to ``ignore``. The tag is stripped from
-        the user-visible reply.
+        garbage) defaults to ``candidate`` to avoid losing user content.
+        The tag is stripped from the user-visible reply.
         """
-        intent = "ignore"
+        # Default to candidate to never lose user creative content
+        intent = "candidate"
         match = re.search(r"<intent>\s*([a-zA-Z_]+)\s*</intent>", raw)
         if match:
             value = match.group(1).strip().lower()
             if value in _VALID_INTENTS:
                 intent = value
-            # committed / unknown -> stay ignore (conservative).
+            # Only explicit "ignore" overrides the default candidate
         reply = re.sub(r"<intent>.*?</intent>", "", raw, flags=re.DOTALL).strip()
         if not reply:
             reply = raw.strip()

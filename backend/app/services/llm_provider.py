@@ -256,7 +256,11 @@ def build_provider(
 
 
 def get_provider(settings=None, tracker: Optional[TokenUsageTracker] = None) -> LLMProvider:
-    """Build the configured provider from application settings."""
+    """Build the configured provider from application settings.
+    
+    This is the legacy function for backward compatibility.
+    Prefer get_provider_for_slot() for slot-aware configuration.
+    """
     if settings is None:
         from ..config import get_settings
 
@@ -268,5 +272,63 @@ def get_provider(settings=None, tracker: Optional[TokenUsageTracker] = None) -> 
         base_url=settings.llm_base_url,
         proxy=settings.llm_proxy,
         timeout=settings.llm_timeout_seconds,
+        tracker=tracker,
+    )
+
+
+def get_provider_for_slot(
+    project_id: str,
+    slot: str,
+    project_service=None,
+    tracker: Optional[TokenUsageTracker] = None,
+) -> Optional[LLMProvider]:
+    """Build provider for a specific slot.
+    
+    Args:
+        project_id: Project ID
+        slot: Configuration slot ("chat" or "utility")
+        project_service: ProjectService instance (optional)
+        tracker: Token usage tracker (optional)
+        
+    Returns:
+        LLMProvider for the slot, or None if not configured
+    """
+    from ..models.llm_config import LLMConfigSlot
+    
+    # Validate slot
+    if slot not in ("chat", "utility"):
+        raise ValueError(f"Invalid slot: {slot}")
+    
+    # Get config service
+    if project_service is None:
+        from ..config import get_settings
+        settings = get_settings()
+        project_service = type("PS", (), {
+            "get_project": lambda pid: True,
+            "get_project_dir": lambda pid: __import__("pathlib").Path("projects") / pid,
+        })()
+    
+    from pathlib import Path
+    from ..config import get_settings
+    settings = get_settings()
+    
+    project_dir = settings.projects_root / project_id
+    if not project_dir.exists():
+        return None
+    
+    from .llm_config import LLMConfigService
+    config_service = LLMConfigService(project_dir, project_id)
+    config = config_service.get_config(slot)
+    
+    if not config.api_key:
+        return None
+    
+    return build_provider(
+        provider=config.provider,
+        api_key=config.api_key,
+        model=config.model,
+        base_url=config.api_endpoint,
+        proxy=config.proxy,
+        timeout=config.timeout_seconds,
         tracker=tracker,
     )

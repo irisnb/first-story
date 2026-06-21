@@ -54,7 +54,7 @@ def test_module_document_model():
 
 def test_module_lock_expiration():
     """ModuleLock should detect expiration correctly."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     
     # Not expired
     lock = ModuleLock(module="world", user_id="user1", ttl_seconds=300)
@@ -64,7 +64,7 @@ def test_module_lock_expiration():
     old_lock = ModuleLock(
         module="world",
         user_id="user1",
-        locked_at=datetime.utcnow() - timedelta(seconds=400),
+        locked_at=datetime.now(timezone.utc) - timedelta(seconds=400),
         ttl_seconds=300,
     )
     assert old_lock.is_expired()

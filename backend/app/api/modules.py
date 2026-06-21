@@ -18,7 +18,7 @@ from app.services.module_document import ModuleDocumentService
 from app.services.project import ProjectService
 
 
-router = APIRouter(prefix="/api/v1/projects/{project_id}/modules", tags=["modules"])
+router = APIRouter(prefix="/projects/{project_id}/modules", tags=["modules"])
 
 
 def get_project_service() -> ProjectService:

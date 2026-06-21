@@ -1,9 +1,9 @@
 """Module document models for the five story modules.
 
-This aligns with the module-documents spec.
+This aligns with the module-documents spec with provenance tracking.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -21,11 +21,33 @@ MODULE_SECTIONS: dict[str, list[str]] = {
 MODULE_NAMES = list(MODULE_SECTIONS.keys())
 
 
+class ProvenanceEntry(BaseModel):
+    """Provenance entry tracking the source of content."""
+
+    type: str = Field(..., description="Source type: 'idea_card', 'chat_message', 'manual'")
+    source_id: Optional[str] = Field(None, description="ID of the source (card_id, message_id, etc.)")
+    revision_id: Optional[str] = Field(None, description="Revision ID if from idea card")
+    excerpt: Optional[str] = Field(None, description="Original excerpt from source")
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
+        description="When this content was added"
+    )
+
+
 class ModuleSection(BaseModel):
     """A single section within a module document."""
 
     name: str = Field(..., description="Section name (e.g., '主要角色')")
     content: str = Field(default="", description="Section content as text")
+    version: int = Field(default=1, description="Section version for optimistic locking")
+    provenance: list[ProvenanceEntry] = Field(
+        default_factory=list,
+        description="List of provenance entries tracking content sources"
+    )
+    user_modified: bool = Field(
+        default=False,
+        description="Whether user has manually modified this section"
+    )
 
 
 class ModuleDocument(BaseModel):
@@ -55,19 +77,19 @@ class ModuleLock(BaseModel):
     module: str = Field(..., description="Module name being locked")
     user_id: str = Field(..., description="User ID holding the lock")
     locked_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="When the lock was acquired"
     )
     ttl_seconds: int = Field(default=300, description="Lock TTL in seconds (default 5 min)")
 
     def is_expired(self) -> bool:
         """Check if the lock has expired."""
-        elapsed = (datetime.utcnow() - self.locked_at).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self.locked_at).total_seconds()
         return elapsed > self.ttl_seconds
 
     def extend(self, additional_seconds: int = 300) -> None:
         """Extend the lock TTL."""
-        self.locked_at = datetime.utcnow()
+        self.locked_at = datetime.now(timezone.utc)
         self.ttl_seconds = additional_seconds
 
 

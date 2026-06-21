@@ -156,8 +156,7 @@ def _run_classification(
     """
     import asyncio
     from ..services.classify import ClassifyService
-    from ..config import get_settings
-    from ..services.llm_provider import get_provider
+    from ..services.llm_provider import get_provider_for_slot
 
     try:
         # Get module document service
@@ -166,11 +165,8 @@ def _run_classification(
             logger.warning("Cannot classify: module service not found")
             return
 
-        # Get LLM provider
-        settings = get_settings()
-        llm = None
-        if settings.llm_api_key:
-            llm = get_provider(settings)
+        # Get LLM provider for utility slot
+        llm = get_provider_for_slot(project_id, "utility", project_service)
 
         # Get context summaries
         world_summary = ""
