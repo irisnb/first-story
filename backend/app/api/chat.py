@@ -31,6 +31,10 @@ from ..services.hub import get_hub
 
 logger = logging.getLogger("first_story.chat")
 
+# Context summary trigger thresholds (must match dialogue.py)
+_MINOR_SUMMARY_TURNS = 10  # Every 10 turns: update recent_focus
+_MAJOR_SUMMARY_TURNS = 30  # Every 30 turns: update all fields
+
 router = APIRouter(prefix="/projects/{project_id}")
 
 
@@ -87,6 +91,48 @@ def _run_candidate_extraction(
     )
 
 
+def _run_context_summary_update(
+    project_service: ProjectService,
+    project_id: str,
+    summary_type: str,
+    current_turn_count: int,
+) -> None:
+    """Background context summary update.
+
+    Generates summary, writes event, and rebuilds projection.
+    Failure-isolated: errors are logged but not raised.
+
+    Args:
+        project_service: Project service instance
+        project_id: Project ID
+        summary_type: "minor" or "major"
+        current_turn_count: Current turn count
+    """
+    from ..services.dialogue import DialogueAgent
+
+    summary_service = project_service.get_context_summary_service(project_id)
+    if summary_service is None:
+        logger.warning("Cannot update context summary: project not found")
+        return
+
+    # Get story state summary for major summaries
+    story_state_summary = ""
+    if summary_type == "major":
+        services = project_service.get_services(project_id)
+        if services:
+            _, projector = services
+            state = projector.load_state()
+            if state:
+                # Build a simple summary of story state
+                story_state_summary = DialogueAgent._state_summary(state)
+
+    summary_service.update_and_persist(
+        summary_type=summary_type,
+        current_turn_count=current_turn_count,
+        story_state_summary=story_state_summary,
+    )
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     project_id: str,
@@ -123,6 +169,30 @@ async def chat(
             project_id,
             request.message,
             result.user_message_id,
+        )
+
+    # Check if context summary update should be triggered
+    turn_count = result.turn_count
+    if turn_count > 0 and turn_count % _MAJOR_SUMMARY_TURNS == 0:
+        # Major summary at 30, 60, 90...
+        logger.info("Triggering major context summary update at turn %d", turn_count)
+        background_tasks.add_task(
+            _run_context_summary_update,
+            project_service,
+            project_id,
+            "major",
+            turn_count,
+        )
+    elif turn_count > 0 and turn_count % _MINOR_SUMMARY_TURNS == 0:
+        # Minor summary at 10, 20, 40, 50, 70, 80...
+        # (but not at 30, 60, 90 which are major)
+        logger.info("Triggering minor context summary update at turn %d", turn_count)
+        background_tasks.add_task(
+            _run_context_summary_update,
+            project_service,
+            project_id,
+            "minor",
+            turn_count,
         )
 
     return ChatResponse(

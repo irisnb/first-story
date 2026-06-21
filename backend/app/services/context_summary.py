@@ -8,10 +8,12 @@ Implements the layered summary mechanism:
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from ..models.state import ContextSummary
+from .hub import get_hub
 
 if TYPE_CHECKING:
     from .event_log import EventLogService
@@ -164,3 +166,99 @@ class ContextSummaryService:
             return {}
 
         return json.loads(text[first : last + 1])
+
+    def _get_recent_chat_messages(self, limit: int = 60) -> list[str]:
+        """Get recent chat messages for summary generation.
+
+        Args:
+            limit: Maximum number of messages to return
+
+        Returns:
+            List of message contents (user and assistant)
+        """
+        messages: list[str] = []
+        for event in self.event_log.read_events():
+            etype = event.type.value if hasattr(event.type, "value") else event.type
+            if etype != "chat.message":
+                continue
+            content = event.payload.get("content", "")
+            if content:
+                messages.append(content)
+        return messages[-limit:]
+
+    def _write_summary_event(
+        self,
+        summary_type: str,
+        turn_count: int,
+        summary_data: dict[str, str],
+    ) -> None:
+        """Write a context_summary.updated event.
+
+        Args:
+            summary_type: "minor" or "major"
+            turn_count: Current turn count
+            summary_data: Dict with summary fields (world_brief, plot_brief, etc.)
+        """
+        writer = get_hub().writer_for(self.event_log)
+        event_id = f"evt_{uuid.uuid4().hex[:12]}"
+        now = datetime.now().isoformat()
+
+        payload = {
+            "turn_count": turn_count,
+            "summary_type": summary_type,
+            **summary_data,
+        }
+
+        # Add timestamp based on summary type
+        if summary_type == "minor":
+            payload["last_minor_update"] = now
+        else:
+            payload["last_major_update"] = now
+
+        writer.append(
+            event_id=event_id,
+            idempotency_key=f"context_summary:{event_id}",
+            event_type="context_summary.updated",
+            payload=payload,
+            actor="hub",
+        )
+
+    def update_and_persist(
+        self,
+        summary_type: str,
+        current_turn_count: int,
+        story_state_summary: str = "",
+    ) -> None:
+        """Generate summary, write event, and rebuild projection.
+
+        This is the main entry point for background summary updates.
+        Failure-isolated: errors are logged but not raised.
+
+        Args:
+            summary_type: "minor" (update recent_focus) or "major" (update all fields)
+            current_turn_count: Current turn count to record in the event
+            story_state_summary: Summary of current story state (for major summaries)
+        """
+        try:
+            if summary_type == "minor":
+                recent_messages = self._get_recent_chat_messages(limit=20)
+                recent_focus = self.generate_minor_summary(recent_messages)
+                summary_data = {"recent_focus": recent_focus}
+            else:  # major
+                recent_messages = self._get_recent_chat_messages(limit=60)
+                summary_data = self.generate_major_summary(recent_messages, story_state_summary)
+
+            # Write the event
+            self._write_summary_event(summary_type, current_turn_count, summary_data)
+
+            # Rebuild projection
+            self.projector.rebuild()
+
+            logger.info(
+                "Context summary updated: type=%s, turn_count=%d",
+                summary_type,
+                current_turn_count,
+            )
+        except Exception as e:
+            logger.error("Failed to update context summary: %s", e)
+            # Failure-isolated: don't raise, just log

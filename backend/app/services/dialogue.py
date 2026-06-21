@@ -32,12 +32,15 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ..models.state import StoryState
 from .event_log import EventLogService
 from .hub import get_hub
 from .llm_provider import LLMNotConfiguredError, LLMProvider
+
+if TYPE_CHECKING:
+    from .projector import ProjectorService
 
 logger = logging.getLogger("first_story.dialogue")
 
@@ -85,6 +88,8 @@ class DialogueResult:
     # The persisted user message id, used to attach a candidate extraction.
     user_message_id: str
     llm_succeeded: bool
+    # Current turn count after this message (for summary trigger check).
+    turn_count: int = 0
 
 
 class DialogueAgent:
@@ -98,10 +103,12 @@ class DialogueAgent:
     def __init__(
         self,
         event_log: EventLogService,
+        projector: Optional["ProjectorService"] = None,
         *,
         llm_provider: Optional[LLMProvider] = None,
     ) -> None:
         self.event_log = event_log
+        self.projector = projector
         self.llm = llm_provider
         self._writer = get_hub().writer_for(event_log)
 
@@ -133,6 +140,18 @@ class DialogueAgent:
             if p.get("role") == "user":
                 count += 1
         return count
+
+    def _get_current_turn_count(self) -> int:
+        """Get current turn count from story_state.
+
+        Falls back to counting from event log if projector/state unavailable.
+        """
+        if self.projector:
+            state = self.projector.load_state()
+            if state and state.story and state.story.context_summary:
+                return state.story.context_summary.turn_count
+        # Fallback: count from events
+        return self._count_turns()
 
     @staticmethod
     def _state_summary(state: Optional[StoryState]) -> str:
@@ -260,6 +279,10 @@ class DialogueAgent:
         to schedule a candidate extraction through the Hub. NEVER returns
         ``committed`` and never touches specialist services.
         """
+        # Get current turn count before this message
+        current_turn_count = self._get_current_turn_count()
+        new_turn_count = current_turn_count + 1
+
         user_msg_id = self._new_id("msg")
         self._writer.append(
             event_id=self._new_id("evt"),
@@ -267,6 +290,15 @@ class DialogueAgent:
             event_type="chat.message",
             payload={"message_id": user_msg_id, "role": "user", "content": message},
             actor="user",
+        )
+
+        # Write turn_count update event
+        self._writer.append(
+            event_id=self._new_id("evt"),
+            idempotency_key=f"turn_count:{user_msg_id}",
+            event_type="context_summary.updated",
+            payload={"turn_count": new_turn_count},
+            actor="dialogue_gateway",
         )
 
         if self.llm is None:
@@ -279,6 +311,7 @@ class DialogueAgent:
                 extraction_status="skipped_no_llm",
                 user_message_id=user_msg_id,
                 llm_succeeded=False,
+                turn_count=new_turn_count,
             )
 
         prompt = self._build_prompt(message, state=state, style_memos=style_memos)
@@ -292,6 +325,7 @@ class DialogueAgent:
                 extraction_status="skipped_no_llm",
                 user_message_id=user_msg_id,
                 llm_succeeded=False,
+                turn_count=new_turn_count,
             )
         except Exception as exc:  # noqa: BLE001 - user msg kept; no assistant write
             logger.warning("dialogue LLM call failed: %s", exc)
@@ -302,6 +336,7 @@ class DialogueAgent:
                 extraction_status="llm_error",
                 user_message_id=user_msg_id,
                 llm_succeeded=False,
+                turn_count=new_turn_count,
             )
 
         reply, intent = self._parse_reply_and_intent(response.text)
@@ -328,4 +363,5 @@ class DialogueAgent:
             extraction_status=extraction_status,
             user_message_id=user_msg_id,
             llm_succeeded=True,
+            turn_count=new_turn_count,
         )

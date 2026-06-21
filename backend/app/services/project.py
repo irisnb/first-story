@@ -306,7 +306,7 @@ class ProjectService:
         services = self.get_services(project_id)
         if not services:
             return None
-        event_log, _ = services
+        event_log, projector = services
 
         from ..config import get_settings
         from .dialogue import DialogueAgent
@@ -316,7 +316,27 @@ class ProjectService:
         llm = None
         if settings.llm_api_key:
             llm = get_provider(settings)
-        return DialogueAgent(event_log, llm_provider=llm)
+        return DialogueAgent(event_log, projector=projector, llm_provider=llm)
+
+    def get_context_summary_service(self, project_id: str):
+        """Get a ContextSummaryService for a project (with configured LLM provider).
+
+        Returns None if the project does not exist.
+        """
+        services = self.get_services(project_id)
+        if not services:
+            return None
+        event_log, projector = services
+
+        from ..config import get_settings
+        from .context_summary import ContextSummaryService
+        from .llm_provider import get_provider
+
+        settings = get_settings()
+        llm = None
+        if settings.llm_api_key:
+            llm = get_provider(settings)
+        return ContextSummaryService(event_log, projector, llm_provider=llm)
 
     def get_style_memos(self, project_id: str) -> list[dict]:
         """Return active style memos as plain dicts for prompt injection.
