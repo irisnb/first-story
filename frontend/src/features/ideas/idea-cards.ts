@@ -32,6 +32,10 @@ export interface IdeaCard {
   updated_at: string
   /** 来源 */
   source?: IdeaCardSource
+  /** 摘要（用于列表显示） */
+  summary: string
+  /** 创建来源：auto（自动提取）或 manual（手动创建） */
+  created_from: 'auto' | 'manual'
 }
 
 /** 卡片版本（内容存储在版本中） */
@@ -50,6 +54,8 @@ export interface IdeaCardRevision {
 export interface CreateIdeaCardRequest {
   content: string
   source?: IdeaCardSource
+  summary?: string
+  created_from?: 'auto' | 'manual'
 }
 
 /** 更新卡片请求 */

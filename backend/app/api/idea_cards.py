@@ -39,6 +39,8 @@ class IdeaCard(BaseModel):
     created_at: str
     updated_at: str
     source: Optional[IdeaCardSource] = None
+    summary: str = ""  # 摘要，用于列表显示
+    created_from: str = "auto"  # "auto" | "manual"
 
 
 class IdeaCardRevision(BaseModel):
@@ -53,6 +55,8 @@ class CreateIdeaCardRequest(BaseModel):
     """Request to create an idea card."""
     content: str
     source: Optional[IdeaCardSource] = None
+    summary: str = ""  # 摘要
+    created_from: str = "manual"  # 手动创建默认为 "manual"
 
 
 class UpdateIdeaCardRequest(BaseModel):
@@ -140,6 +144,32 @@ async def list_idea_cards(
     )
 
 
+class CardExistsResponse(BaseModel):
+    """Response for checking if a card exists for a message."""
+    exists: bool
+
+
+@router.get("/check/{message_id}", response_model=CardExistsResponse)
+async def check_card_exists(
+    project_id: str,
+    message_id: str,
+    project_service: ProjectService = Depends(get_project_service),
+) -> CardExistsResponse:
+    """Check if an idea card already exists for a given message ID.
+    
+    Used by frontend to show "already collected" state for chat messages.
+    """
+    project_dir = _get_project_dir(project_service, project_id)
+    cards, _ = _load_cards(project_dir)
+    
+    exists = any(
+        (card.get("source") or {}).get("message_id") == message_id
+        for card in cards
+    )
+    
+    return CardExistsResponse(exists=exists)
+
+
 @router.post("", response_model=IdeaCardResponse, status_code=status.HTTP_201_CREATED)
 async def create_idea_card(
     project_id: str,
@@ -162,6 +192,8 @@ async def create_idea_card(
         "created_at": now,
         "updated_at": now,
         "source": request.source.model_dump() if request.source else None,
+        "summary": request.summary or "",
+        "created_from": request.created_from or "manual",
     }
     
     # Create revision

@@ -23,11 +23,17 @@ const ideaApi = {
     if (!res.ok) throw new ApiError(res.status, 'Failed to load cards', await res.text())
     return res.json()
   },
-  createIdeaCard: async (projectId: string, content: string, source?: { message_id?: string; excerpt: string }) => {
+  createIdeaCard: async (
+    projectId: string, 
+    content: string, 
+    source?: { message_id?: string; excerpt: string },
+    summary?: string,
+    created_from?: 'auto' | 'manual'
+  ) => {
     const res = await fetch(`/api/v1/projects/${projectId}/idea-cards`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, source }),
+      body: JSON.stringify({ content, source, summary, created_from }),
     })
     if (!res.ok) throw new ApiError(res.status, 'Failed to create card', await res.text())
     return res.json()
@@ -64,6 +70,7 @@ export function IdeaWarehouseView() {
   const [editingCardId, setEditingCardId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
   const [newCardContent, setNewCardContent] = useState('')
+  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set()) // 勾选的卡片
 
   // 加载卡片列表
   const { data: cardsData, isLoading } = useQuery({
@@ -184,15 +191,49 @@ export function IdeaWarehouseView() {
 
       {/* 卡片列表 */}
       <div className="flex-1 space-y-2 overflow-auto">
+        {/* 操作栏 */}
+        {selectedCards.size > 0 && (
+          <div className="flex items-center gap-2 p-2 bg-primary/10 rounded-md">
+            <span className="text-sm">已选择 {selectedCards.size} 张卡片</span>
+            <Button
+              size="sm"
+              onClick={() => {
+                const selectedContents = cards
+                  .filter((c: IdeaCard) => selectedCards.has(c.id))
+                  .map((c: IdeaCard) => {
+                    const content = getCardContent(c.id)
+                    const summary = c.summary || content.slice(0, 50)
+                    return `【${summary}】\n${content}`
+                  })
+                  .join('\n\n')
+                setChatPrefill(`根据以下素材，生成第一场戏的剧本：\n\n${selectedContents}`)
+                setView('home')
+                setSelectedCards(new Set())
+              }}
+            >
+              生成剧本草稿
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelectedCards(new Set())}
+            >
+              取消选择
+            </Button>
+          </div>
+        )}
+
         {/* 待用卡片 */}
         {activeCards.map((card: IdeaCard) => {
           const content = getCardContent(card.id)
+          const summary = card.summary || content.slice(0, 50)
+          const isSelected = selectedCards.has(card.id)
           const isEditing = editingCardId === card.id
 
           return (
             <article
               key={card.id}
-              className="rounded-md border border-border bg-card/60 p-3 transition-colors hover:border-primary/30"
+              className={`rounded-md border border-border bg-card/60 p-3 transition-colors hover:border-primary/30 ${isSelected ? 'border-primary bg-primary/5' : ''}`}
             >
               {isEditing ? (
                 <div>
@@ -224,10 +265,32 @@ export function IdeaWarehouseView() {
                 </div>
               ) : (
                 <div>
-                  <p className="text-sm leading-relaxed">{content}</p>
+                  {/* 勾选框 + 摘要 */}
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(e) => {
+                        const newSet = new Set(selectedCards)
+                        e.target.checked ? newSet.add(card.id) : newSet.delete(card.id)
+                        setSelectedCards(newSet)
+                      }}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{summary}</p>
+                      <details className="mt-1">
+                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                          查看完整内容
+                        </summary>
+                        <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+                      </details>
+                    </div>
+                  </div>
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">
                       {new Date(card.created_at).toLocaleDateString('zh-CN')}
+                      {card.created_from === 'auto' && ' · 自动提取'}
                     </span>
                     <div className="flex gap-1">
                       <Button

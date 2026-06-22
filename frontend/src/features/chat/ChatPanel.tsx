@@ -7,7 +7,7 @@ import {
   useMessageRuntime,
 } from '@assistant-ui/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useChatRuntimeContext } from '@/features/chat/chat-runtime-context'
+import { useChatRuntimeContext, getScriptReady } from '@/features/chat/chat-runtime-context'
 import { useUiStore } from '@/shared/store/ui-store'
 import { api } from '@/shared/api/api'
 import { Button } from '@/shared/ui/button'
@@ -17,13 +17,16 @@ function generateId(): string {
 }
 
 type AdoptStatus = 'idle' | 'adopting' | 'adopted' | 'error'
+type CollectStatus = 'idle' | 'collecting' | 'collected' | 'error'
 
 function MessageWithActions() {
   const { projectId } = useChatRuntimeContext()
   const jumpToScreenplay = useUiStore((s) => s.jumpToScreenplay)
   const queryClient = useQueryClient()
   const messageRuntime = useMessageRuntime()
-  const [status, setStatus] = useState<AdoptStatus>('idle')
+  const [adoptStatus, setAdoptStatus] = useState<AdoptStatus>('idle')
+  const [collectStatus, setCollectStatus] = useState<CollectStatus>('idle')
+  const [alreadyCollected, setAlreadyCollected] = useState<boolean>(false)
 
   const getMessageText = useCallback(() => {
     const message = messageRuntime.getState()
@@ -34,6 +37,25 @@ function MessageWithActions() {
       .join('\n')
   }, [messageRuntime])
 
+  const getMessageId = useCallback(() => {
+    const message = messageRuntime.getState()
+    return message.id as string
+  }, [messageRuntime])
+
+  // 检查是否已收藏
+  useEffect(() => {
+    const messageId = getMessageId()
+    if (messageId && projectId) {
+      fetch(`/api/v1/projects/${projectId}/idea-cards/check/${messageId}`)
+        .then((res) => res.json())
+        .then((data) => setAlreadyCollected(data.exists))
+        .catch(() => setAlreadyCollected(false))
+    }
+  }, [getMessageId, projectId])
+
+  // 获取 script_ready 状态
+  const scriptReady = getScriptReady(getMessageId())
+
   const adoptMutation = useMutation({
     mutationFn: async () => {
       const text = getMessageText()
@@ -41,23 +63,59 @@ function MessageWithActions() {
       return api.adopt(projectId, {
         content: text,
         adopt_request_id: generateId(),
+        document_id: 'screenplay',
       })
     },
     onSuccess: () => {
-      setStatus('adopted')
+      setAdoptStatus('adopted')
       queryClient.invalidateQueries({ queryKey: ['revisions', projectId] })
     },
     onError: (error) => {
       console.error('Adopt failed:', error)
-      setStatus('error')
+      setAdoptStatus('error')
+    },
+  })
+
+  const collectMutation = useMutation({
+    mutationFn: async () => {
+      const text = getMessageText()
+      const messageId = getMessageId()
+      if (!projectId || !text.trim()) return
+      const res = await fetch(`/api/v1/projects/${projectId}/idea-cards`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: text,
+          source: { message_id: messageId, excerpt: text.slice(0, 100) },
+          summary: text.slice(0, 50),
+          created_from: 'manual',
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to collect')
+      return res.json()
+    },
+    onSuccess: () => {
+      setCollectStatus('collected')
+      setAlreadyCollected(true)
+      queryClient.invalidateQueries({ queryKey: ['idea-cards', projectId] })
+    },
+    onError: (error) => {
+      console.error('Collect failed:', error)
+      setCollectStatus('error')
     },
   })
 
   const handleAdopt = useCallback(() => {
-    if (status === 'adopted' || status === 'adopting') return
-    setStatus('adopting')
+    if (adoptStatus === 'adopted' || adoptStatus === 'adopting') return
+    setAdoptStatus('adopting')
     adoptMutation.mutate()
-  }, [status, adoptMutation])
+  }, [adoptStatus, adoptMutation])
+
+  const handleCollect = useCallback(() => {
+    if (collectStatus === 'collected' || collectStatus === 'collecting' || alreadyCollected) return
+    setCollectStatus('collecting')
+    collectMutation.mutate()
+  }, [collectStatus, alreadyCollected, collectMutation])
 
   return (
     <MessagePrimitive.Root className="mb-3 flex flex-col items-start">
@@ -65,31 +123,51 @@ function MessageWithActions() {
         <MessagePrimitive.Parts />
       </div>
       <div className="mt-1 flex gap-1">
-        {status === 'adopted' ? (
-          <>
-            <span className="text-xs text-muted-foreground">✓ 已放入正文</span>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => jumpToScreenplay()}>
-              查看剧本
-            </Button>
-          </>
-        ) : status === 'error' ? (
-          <>
-            <span className="text-xs text-destructive">放入失败</span>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setStatus('idle')}>
-              重试
-            </Button>
-          </>
+        {/* 收藏到创意仓库按钮 */}
+        {collectStatus === 'collected' || alreadyCollected ? (
+          <span className="text-xs text-muted-foreground">✓ 已收藏</span>
+        ) : collectStatus === 'error' ? (
+          <span className="text-xs text-destructive">收藏失败</span>
         ) : (
           <Button
             variant="ghost"
             size="sm"
             className="h-6 px-2 text-xs"
-            onClick={handleAdopt}
-            disabled={status === 'adopting'}
-            data-adopt-btn
+            onClick={handleCollect}
+            disabled={collectStatus === 'collecting'}
           >
-            {status === 'adopting' ? '处理中...' : '放入正文'}
+            {collectStatus === 'collecting' ? '收藏中...' : '收藏到创意仓库'}
           </Button>
+        )}
+
+        {/* 放入正文按钮 - 仅当 script_ready 为 true 时显示 */}
+        {scriptReady && (
+          adoptStatus === 'adopted' ? (
+            <>
+              <span className="text-xs text-muted-foreground">✓ 已放入正文</span>
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => jumpToScreenplay()}>
+                查看剧本
+              </Button>
+            </>
+          ) : adoptStatus === 'error' ? (
+            <>
+              <span className="text-xs text-destructive">放入失败</span>
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setAdoptStatus('idle')}>
+                重试
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={handleAdopt}
+              disabled={adoptStatus === 'adopting'}
+              data-adopt-btn
+            >
+              {adoptStatus === 'adopting' ? '处理中...' : '放入正文'}
+            </Button>
+          )
         )}
       </div>
     </MessagePrimitive.Root>

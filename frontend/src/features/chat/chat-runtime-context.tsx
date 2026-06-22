@@ -10,6 +10,13 @@ import { api } from '@/shared/api/api'
 import { useUiStore } from '@/shared/store/ui-store'
 import type { ChatMessage } from '@/shared/api/api-types'
 
+// 存储 message_id -> script_ready 的映射
+const scriptReadyMap = new Map<string, boolean>()
+
+export function getScriptReady(messageId: string): boolean {
+  return scriptReadyMap.get(messageId) ?? false
+}
+
 // 从 messages 提取最新用户文本
 function latestUserText(messages: readonly { role: string; content: unknown }[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -26,6 +33,10 @@ function latestUserText(messages: readonly { role: string; content: unknown }[])
 
 // 转换后端消息格式为 ThreadMessageLike
 function toThreadMessageLike(msg: ChatMessage): ThreadMessageLike {
+  // 存储 script_ready 信息
+  if (msg.script_ready) {
+    scriptReadyMap.set(msg.message_id, msg.script_ready)
+  }
   return {
     role: msg.role,
     content: [{ type: 'text', text: msg.content }],
@@ -159,11 +170,17 @@ function useChatRuntime(projectId: string) {
         if (abortSignal.aborted) {
           return { content: [{ type: 'text', text: '' }] }
         }
+        // 存储 script_ready 信息
+        if (res.script_ready && res.message_id) {
+          scriptReadyMap.set(res.message_id, res.script_ready)
+        }
         // candidate 轮会在后台排队抽取 → 刷新证据/投影
         if (res.intent === 'candidate') {
           queryClient.invalidateQueries({ queryKey: ['state', projectId] })
+          queryClient.invalidateQueries({ queryKey: ['idea-cards', projectId] })
           setTimeout(() => {
             queryClient.invalidateQueries({ queryKey: ['state', projectId] })
+            queryClient.invalidateQueries({ queryKey: ['idea-cards', projectId] })
           }, 2000)
         }
         return { content: [{ type: 'text', text: res.reply }] }

@@ -460,3 +460,155 @@ HKUDS 实验室开源（MIT），图谱增强 RAG：
 ## 语言与交互
 
 本项目使用**中文**与用户对话。所有提示、解释、问题用中文输出。
+
+---
+
+## 十、开发与测试
+
+### 技术栈（已确定）
+
+| 层级 | 技术 |
+|------|------|
+| 前端 | React + TypeScript + Vite |
+| 后端 | Python + FastAPI |
+| 数据库 | 文件系统（事件日志 JSONL + JSON 投影） |
+| LLM | 多模型支持（OpenAI、本地模型等） |
+| Agent 编排 | 自研（薄 Hub + 专职 Agent） |
+| 知识库 | LightRAG |
+
+### 项目结构
+
+```
+D:\Frist story\
+├── frontend/           # React 前端
+│   ├── src/
+│   │   ├── features/   # 功能模块（chat、screenplay、modules 等）
+│   │   ├── shared/     # 共享组件、API、状态管理
+│   │   └── ...
+│   └── package.json
+├── backend/            # Python 后端
+│   ├── app/
+│   │   ├── api/        # FastAPI 路由
+│   │   ├── services/   # 业务逻辑
+│   │   ├── models/     # Pydantic 模型
+│   │   └── ...
+│   ├── projects/       # 项目数据存储
+│   └── requirements.txt
+├── 启动.bat            # 启动前后端服务
+├── 关闭.bat            # 关闭前后端服务
+└── CLAUDE.md           # 核心原则（不可修改）
+```
+
+### 启动与停止
+
+```powershell
+# 启动服务（前端 + 后端）
+.\启动.bat
+
+# 停止服务
+.\关闭.bat
+```
+
+服务地址：
+- 前端：http://localhost:5173
+- 后端：http://localhost:8000
+- API 文档：http://localhost:8000/docs
+
+### 测试方法：Playwright MCP
+
+**使用 Playwright MCP 进行前端测试**，而非手动 curl 或直接调用后端 API。测试必须通过真实浏览器交互。
+
+#### 为什么用 Playwright
+
+1. **真实用户视角**：模拟用户实际操作，验证完整流程
+2. **前端验证**：UI 渲染、交互、状态变化需要浏览器环境
+3. **数据流验证**：从用户操作到数据存储的完整链路
+
+#### 可用工具
+
+| 工具 | 用途 |
+|------|------|
+| `browser_navigate` | 导航到 URL |
+| `browser_click` | 点击元素 |
+| `browser_type` | 输入文本 |
+| `browser_query` | 查询元素内容 |
+| `browser_snapshot` | 获取页面快照（accessibility tree） |
+| `browser_screenshot` | 截图 |
+| `browser_console` | 读取控制台日志 |
+| `browser_wait` | 等待时间 |
+| `browser_scroll` | 滚动页面 |
+
+#### 测试流程示例
+
+```typescript
+// 1. 导航到主页
+browser_navigate({ url: "http://localhost:5173/" })
+
+// 2. 创建新项目
+browser_click({ selector: "button:contains('新建项目')" })
+browser_type({ selector: "input[name='projectName']", text: "测试项目" })
+browser_click({ selector: "button[type='submit']" })
+
+// 3. 验证项目创建成功
+browser_snapshot({}) // 检查项目是否出现在列表中
+
+// 4. 发送对话消息
+browser_type({ selector: "textarea", text: "我想写一个故事" })
+browser_click({ selector: "button:contains('发送')" })
+
+// 5. 等待 LLM 响应
+browser_wait({ ms: 5000 })
+browser_snapshot({}) // 验证响应内容
+
+// 6. 测试"放入正文"功能
+browser_click({ selector: "button:contains('放入正文')" })
+browser_wait({ ms: 2000 })
+
+// 7. 验证剧本编辑器内容
+browser_click({ selector: "a[href='/screenplay']" })
+browser_snapshot({})
+```
+
+#### 测试检查清单
+
+测试时需要验证的关键流程：
+
+- [ ] 项目创建、切换、删除
+- [ ] 对话功能（发送消息、LLM 响应）
+- [ ] Fountain 编辑器（输入、保存、场景识别）
+- [ ] "放入正文"功能（script_ready 判断、采纳 API）
+- [ ] 五大模块查看（世界观/角色/剧情/主题/结构）
+- [ ] 创意卡片收藏（待修复）
+
+#### 已知问题
+
+| 问题 | 状态 | 位置 |
+|------|------|------|
+| 创意卡片收藏失败 | 待修复 | 控制台报错：`Failed to collect` |
+
+### 代码规范
+
+#### 前端
+
+- 组件放在 `src/features/` 下按功能分类
+- 共享组件放在 `src/shared/`
+- 使用 TanStack Query 管理服务端状态
+- 使用 Zustand 管理客户端状态
+
+#### 后端
+
+- API 路由在 `app/api/`
+- 业务逻辑在 `app/services/`
+- 数据模型在 `app/models/`
+- 所有修改通过事件日志记录（append-only）
+
+### 文档 ID 约定
+
+**重要**：前端和后端对文档 ID 的约定必须一致。
+
+| 文档 ID | 用途 |
+|---------|------|
+| `screenplay` | 剧本正文（Fountain 格式） |
+| `main` | 主文档（备用） |
+
+**已修复问题**：采纳功能曾写入 `main`，但剧本编辑器读取 `screenplay`，导致数据隔离。修复方式：在采纳请求中显式传递 `document_id: 'screenplay'`。

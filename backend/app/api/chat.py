@@ -70,6 +70,7 @@ class ChatResponse(BaseModel):
     message_id: str
     intent: str
     extraction_status: str
+    script_ready: bool = False  # Whether content is close to script format
 
 
 def _run_candidate_extraction(
@@ -213,6 +214,170 @@ def _run_classification(
         logger.warning("Classification failed: %s", e)
 
 
+def _run_idea_extraction(
+    project_service: ProjectService,
+    project_id: str,
+    user_message: str,
+    assistant_message: str,
+    assistant_message_id: str,
+) -> None:
+    """Background idea card extraction.
+
+    Calls LLM to judge and extract idea cards from conversation.
+    Failure-isolated: errors are logged but not raised.
+
+    Args:
+        project_service: Project service instance
+        project_id: Project ID
+        user_message: User's message content
+        assistant_message: Assistant's reply content
+        assistant_message_id: Assistant message ID for deduplication
+    """
+    import json
+    from ..services.llm_provider import get_provider_for_slot
+
+    try:
+        # 1. Get LLM provider for utility slot
+        llm = get_provider_for_slot(project_id, "utility", project_service)
+        if llm is None:
+            logger.warning("Cannot extract idea: LLM not configured")
+            return
+
+        # 2. Build prompt
+        prompt = f"""你是创意识别助手。分析对话，判断是否包含值得用户保存的内容。
+
+【创意的定义】
+值得保存的内容包括：
+• 原创、有价值的想法、隐喻、画面、洞见
+• 可以被进一步发展的"种子"
+• 有意味的设定、名字（如果有说法）
+• 具体的、可触摸的细节
+• 用户提供的设定（角色背景、世界观等）
+
+不是创意：
+• 纯粹的建议清单（除非清单项有原创洞见）
+• 通用的写作技巧讲解（除非有原创例子）
+• 分析框架、选项梳理（用户的最终决定才算）
+• 过渡语、确认性问题
+
+【注意】
+• 宁可多收录，也不要漏掉有价值内容
+• 如果有具体例子，只保留例子，跳过通用讲解
+
+【输出格式】
+输出一行 JSON，格式如下：
+{{"is_idea": true/false, "summary": "一句话概括（20字以内）", "content": "提炼后的内容"}}
+
+【对话】
+用户：{user_message}
+助手：{assistant_message}"""
+
+        # 3. Call LLM
+        response = llm.complete(prompt, temperature=0.3)
+        raw_text = response.text.strip()
+        
+        # Debug log
+        logger.info("Idea extraction LLM response: %s", raw_text[:500])
+
+        # 4. Parse result
+        # Try to extract JSON from the response
+        try:
+            # Find JSON in response - handle various formats
+            # Try to find JSON object
+            import re
+            
+            # Method 1: Find JSON object with regex
+            json_match = re.search(r'\{[^{}]*"is_idea"[^{}]*\}', raw_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+            else:
+                # Method 2: Find first { and last }
+                start = raw_text.find("{")
+                end = raw_text.rfind("}") + 1
+                if start >= 0 and end > start:
+                    json_str = raw_text[start:end]
+                else:
+                    logger.warning("No JSON found in LLM response: %s", raw_text[:200])
+                    return
+            
+            result = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            logger.warning("Failed to parse LLM response as JSON: %s, raw: %s", e, raw_text[:200])
+            return
+
+        is_idea = result.get("is_idea", False)
+        if not is_idea:
+            logger.info("LLM determined this is not an idea, skipping")
+            return
+
+        summary = result.get("summary", "")[:50]  # Limit summary length
+        content = result.get("content", assistant_message)
+
+        # 5. Check for duplicates
+        project_dir = project_service.projects_root / project_id
+        cards_file = project_dir / "idea_cards.json"
+
+        if cards_file.exists():
+            import json as json_module
+            with open(cards_file, "r", encoding="utf-8") as f:
+                existing_cards = json_module.load(f)
+            for card in existing_cards:
+                if card.get("source", {}).get("message_id") == assistant_message_id:
+                    logger.info("Card already exists for message %s", assistant_message_id)
+                    return
+        else:
+            existing_cards = []
+
+        # 6. Create card
+        from datetime import datetime, timezone
+        from uuid import uuid4
+
+        now = datetime.now(timezone.utc).isoformat()
+        card_id = f"card_{uuid4().hex[:8]}"
+        revision_id = f"rev_{uuid4().hex[:8]}"
+
+        new_card = {
+            "id": card_id,
+            "current_revision_id": revision_id,
+            "status": "active",
+            "created_at": now,
+            "updated_at": now,
+            "source": {"message_id": assistant_message_id, "excerpt": content[:100]},
+            "summary": summary,
+            "created_from": "auto",
+        }
+
+        new_revision = {
+            "revision_id": revision_id,
+            "card_id": card_id,
+            "content": content,
+            "created_at": now,
+        }
+
+        # Load existing revisions
+        revisions_file = project_dir / "idea_card_revisions.json"
+        if revisions_file.exists():
+            with open(revisions_file, "r", encoding="utf-8") as f:
+                existing_revisions = json_module.load(f)
+        else:
+            existing_revisions = []
+
+        # Save
+        existing_cards.append(new_card)
+        existing_revisions.append(new_revision)
+
+        with open(cards_file, "w", encoding="utf-8") as f:
+            json_module.dump(existing_cards, f, ensure_ascii=False, indent=2)
+
+        with open(revisions_file, "w", encoding="utf-8") as f:
+            json_module.dump(existing_revisions, f, ensure_ascii=False, indent=2)
+
+        logger.info("Created idea card %s from message %s", card_id, assistant_message_id)
+
+    except Exception as e:
+        logger.warning("Idea extraction failed: %s", e)
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     project_id: str,
@@ -258,6 +423,15 @@ async def chat(
             request.message,
             state,
         )
+        # Also trigger idea extraction
+        background_tasks.add_task(
+            _run_idea_extraction,
+            project_service,
+            project_id,
+            request.message,
+            result.reply,
+            result.message_id,
+        )
 
     # Check if context summary update should be triggered
     turn_count = result.turn_count
@@ -288,6 +462,7 @@ async def chat(
         message_id=result.message_id,
         intent=result.intent,
         extraction_status=result.extraction_status,
+        script_ready=result.script_ready,
     )
 
 
@@ -301,6 +476,7 @@ class ChatMessage(BaseModel):
     role: str = Field(..., description="user or assistant")
     content: str
     timestamp: str
+    script_ready: bool = False  # Whether content is close to script format
 
 
 class ChatMessageListResponse(BaseModel):
@@ -351,6 +527,7 @@ async def get_chat_messages(
                 role=payload.get("role", "user"),
                 content=payload.get("content", ""),
                 timestamp=event.timestamp.isoformat() if event.timestamp else "",
+                script_ready=payload.get("script_ready", False),
             )
         )
 

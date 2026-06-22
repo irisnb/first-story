@@ -32,6 +32,7 @@ export interface ChatResponse {
   // 契约声明为自由 str；下列为代码当前穷举集
   intent: ChatIntent | string
   extraction_status: ExtractionStatus | string
+  script_ready: boolean // 是否接近剧本格式
 }
 
 // ---- Documents ----
@@ -180,6 +181,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp: string
+  script_ready?: boolean // 是否接近剧本格式
 }
 
 export interface ChatMessageListResponse {
